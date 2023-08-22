@@ -41,9 +41,10 @@ def check_feasible_params_polyhedron(vertices, m, c, H):
 
 def main():
     h = 0.5
-    half_extents = h * np.ones(3)
+    # half_extents = h * np.ones(3)
+    half_extents = np.array([0.25, 0.5, 1.0])
     vertices = ip.cuboid_vertices(half_extents)
-    Q = ip.cube_bounding_ellipsoid(h)
+    Q = ip.minimum_bounding_ellipsoid(vertices)
 
     N = 1000
     for i in range(N):
