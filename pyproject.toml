@@ -15,6 +15,8 @@ pycddlib = "^2.1.7"
 ipython = "^8.7"
 mosek = "^10.1.10"
 spatialmath-python = "^1.1.8"
+pybullet = "^3.2.5"
+pinocchio = "^0.4.3"
 
 
 [tool.poetry.group.test.dependencies]

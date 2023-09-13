@@ -1,6 +1,7 @@
 import numpy as np
 import cvxpy as cp
 from scipy.linalg import sqrtm
+from scipy.spatial import ConvexHull
 
 
 def cuboid_vertices(half_extents):
@@ -21,8 +22,9 @@ def cuboid_vertices(half_extents):
 
 
 def convex_hull(points):
-    # TODO
-    pass
+    """Get the vertices of the convex hull of a set of points."""
+    hull = ConvexHull(points)
+    return points[hull.vertices, :]
 
 
 class Ellipsoid:
@@ -68,6 +70,7 @@ class Ellipsoid:
         return Q
 
     def contains(self, x):
+        """Return True if x is inside the ellipsoid, False otherwise."""
         p = x - self.c
         return p @ self.Einv @ p <= 1
 
@@ -94,7 +97,7 @@ def cube_bounding_ellipsoid(h):
 def minimum_bounding_ellipsoid(points):
     """Compute the minimum bounding ellipsoid for a set of points.
 
-    See Convex Optimization by Boyd & Vandenberghe, sec. 8.4.1
+    See Convex Optimization by Boyd & Vandenberghe, sec. 8.4.1.
 
     Returns the ellipsoid.
     """

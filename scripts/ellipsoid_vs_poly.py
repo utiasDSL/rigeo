@@ -44,7 +44,7 @@ def main():
     # half_extents = h * np.ones(3)
     half_extents = np.array([0.25, 0.5, 1.0])
     vertices = ip.cuboid_vertices(half_extents)
-    Q = ip.minimum_bounding_ellipsoid(vertices)
+    Q = ip.minimum_bounding_ellipsoid(vertices).Q
 
     N = 1000
     for i in range(N):
@@ -65,7 +65,11 @@ def main():
         # check feasibility w.r.t. shape of the body
         f1 = check_feasible_params_ellipsoid(Q, m, c, H)
         f2 = check_feasible_params_polyhedron(vertices, m, c, H)
-        if f1 != f2:
+        # if f1 != f2:
+        #     print(f"f1 = {f1}\nf2 = {f2}")
+        #     IPython.embed()
+        #     return
+        if f2 and not f1:
             print(f"f1 = {f1}\nf2 = {f2}")
             IPython.embed()
             return
