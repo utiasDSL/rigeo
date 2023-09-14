@@ -28,62 +28,59 @@ GRAVITY = np.array([0, 0, -9.81])
 
 WRENCH_STDEV = 1.0
 
-USE_ELLIPSOID_CONSTRAINT = False
-USE_POLYHEDRON_CONSTRAINT = True
+USE_ELLIPSOID_CONSTRAINT = True
+USE_POLYHEDRON_CONSTRAINT = False
 
 
-class RigidBody:
-    """Inertial parameters of a rigid body.
-
-    Parameters
-    ----------
-    mass : float
-        Mass of the body.
-    com : iterable
-        Center of mass of the body w.r.t. to some reference point O.
-    I : np.ndarray
-        3x3 inertia matrix about w.r.t. O
-    """
-
-    def __init__(self, mass, com, I):
-        self.mass = mass
-        self.com = com
-        self.I = I
-        self.H = ip.I2H(I)
-        self.J = ip.pseudo_inertia_matrix(mass, com, self.H)
-        self.θ = np.concatenate([[mass], mass * com, ip.vech(self.I)])
-
-        # TODO from_θ constructor
-        # TODO from_mcH perhaps?
-
-        S = ip.skew3(com)
-        # self.I = Ic - mass * S @ S
-        self.M = np.block([[mass * np.eye(3), -mass * S], [mass * S, self.I]])
-
-    def body_wrench(self, V, A):
-        """Compute the body-frame wrench about the reference point."""
-        return self.M @ A + ip.skew6(V) @ self.M @ V
+def J_vec_constraint(J, θ):
+    H = J[:3, :3]
+    I = cp.trace(H) * np.eye(3) - H
+    return [
+        J[3, 3] == θ[0],
+        J[:3, 3] == θ[1:4],
+        I[0, :3] == θ[4:7],
+        I[1, 1:3] == θ[7:9],
+        I[2, 2] == θ[9],
+    ]
 
 
-def body_regressor(V, A):
-    """Compute regressor matrix Y given body frame velocity V and acceleration A.
+class IPIDProblem:
+    """Inertial parameter identification optimization problem."""
+    def __init__(self, Ys, ws, w_noise):
+        self.A = np.vstack(Ys)
+        self.b = np.concatenate(ws + w_noise)
+        self.θ = cp.Variable(10)
+        self.Jopt = cp.Variable((4, 4), PSD=True)
 
-    The regressor maps the inertial parameters to the body inertial wrench: w = Yθ.
-    """
-    return ip.lift6(A) + ip.skew6(V) @ ip.lift6(V)
+    def _solve(self, extra_constraints=None):
+        objective = cp.Minimize(cp.sum_squares(self.A @ self.θ - self.b))
 
+        constraints = J_vec_constraint(self.Jopt, self.θ)
+        if extra_constraints is not None:
+            constraints.extend(extra_constraints)
 
-def unvec_params(θ):
-    mass = θ[0]
-    com = θ[1:4] / mass
-    # fmt: off
-    I = np.array([
-        [θ[4], θ[5], θ[6]],
-        [θ[5], θ[7], θ[8]],
-        [θ[6], θ[8], θ[9]]
-    ])
-    # fmt: on
-    return mass, com, I
+        problem = cp.Problem(objective, constraints)
+        problem.solve(solver=cp.MOSEK)
+        return ip.RigidBody.from_vector(self.θ.value)
+
+    def solve_nominal(self):
+        return self._solve()
+
+    def solve_ellipsoid(self, ellipsoid):
+        extra_constraints = [cp.trace(ellipsoid.Q @ self.Jopt) >= 0]
+        return self._solve(extra_constraints)
+
+    def solve_polyhedron(self, vertices):
+        nv = vertices.shape[0]
+        mvs = cp.Variable(nv)
+        Vs = np.array([np.outer(v, v) for v in vertices])
+        extra_constraints = [
+            mvs >= 0,
+            cp.sum(mvs) == self.θ[0],
+            mvs.T @ vertices == self.θ[1:4],
+            self.Jopt[:3, :3] << cp.sum([m * V for m, V in zip(mvs, Vs)]),
+        ]
+        return self._solve(extra_constraints)
 
 
 def main():
@@ -98,12 +95,7 @@ def main():
 
     vertices = ip.convex_hull(points)
     ellipsoid = ip.minimum_bounding_ellipsoid(vertices)
-
-    # ground truth
-    com = ip.point_mass_system_com(masses, points)
-    I = ip.point_mass_system_inertia(masses, points)[1]
-    # TODO .from_point_masses(masses, points)
-    body = RigidBody(mass=MASS, com=com, I=I)
+    params = ip.RigidBody.from_point_masses(masses=masses, points=points)
 
     urdf_path = Path(pybullet_data.getDataPath()) / "kuka_iiwa/model.urdf"
     model = ip.RobotKinematics.from_urdf_file(
@@ -148,67 +140,24 @@ def main():
         # account for gravity
         G = np.concatenate((C_we.T @ GRAVITY, np.zeros(3)))
         A = A - G
-        w = body.body_wrench(V, A)
+        w = params.body_wrench(V, A)
 
         Vs.append(V)
         As.append(A)
         ws.append(w)
-        Ys.append(body_regressor(V, A))
+        Ys.append(ip.body_regressor(V, A))
 
     # add noise to the force measurements
     w_noise = np.random.normal(scale=WRENCH_STDEV, size=(NUM_STEPS, 6))
 
-    # build data matrices
-    A = np.vstack(Ys)
-    b = np.concatenate(ws + w_noise)
-    Vs = np.array([np.outer(v, v) for v in vertices])
+    prob = IPIDProblem(Ys, ws, w_noise)
+    params_nom = prob.solve_nominal()
+    params_ell = prob.solve_ellipsoid(ellipsoid)
+    params_poly = prob.solve_polyhedron(vertices)
 
-
-    def J_vec_constraint(J, θ):
-        H = J[:3, :3]
-        I = cp.trace(H) * np.eye(3) - H
-        return [
-            J[3, 3] == θ[0],
-            J[:3, 3] == θ[1:4],
-            I[0, :3] == θ[4:7],
-            I[1, 1:3] == θ[7:9],
-            I[2, 2] == θ[9],
-        ]
-
-    θ = cp.Variable(10)
-    Jopt = cp.Variable((4, 4), PSD=True)
-    objective = cp.Minimize(cp.sum_squares(A @ θ - b))
-    constraints = J_vec_constraint(Jopt, θ)
-
-    if USE_ELLIPSOID_CONSTRAINT:
-        constraints.append(cp.trace(ellipsoid.Q @ Jopt) >= 0)
-
-    if USE_POLYHEDRON_CONSTRAINT:
-        nv = vertices.shape[0]
-        mvs = cp.Variable(nv)
-        constraints.extend(
-            [
-                mvs >= 0,
-                cp.sum(mvs) == θ[0],
-                mvs.T @ vertices == θ[1:4],
-                Jopt[:3, :3] << cp.sum([m * V for m, V in zip(mvs, Vs)]),
-            ]
-        )
-
-    problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK)
-
-    mass_opt, com_opt, I_opt = unvec_params(θ.value)
-
-    print(f"true mass = {MASS}")
-    print(f"true com  = {com}")
-    print(f"true I    = {I}")
-
-    print(f"opt mass = {mass_opt}")
-    print(f"opt com  = {com_opt}")
-    print(f"opt I    = {I_opt}")
-
-    print(f"residual = {np.linalg.norm(body.θ - θ.value)}")
+    print(f"nom err  = {np.linalg.norm(params.θ - params_nom.θ)}")
+    print(f"ell err  = {np.linalg.norm(params.θ - params_ell.θ)}")
+    print(f"poly err = {np.linalg.norm(params.θ - params_poly.θ)}")
 
     IPython.embed()
 

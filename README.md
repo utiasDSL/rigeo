@@ -1,4 +1,1 @@
-# Inertial Parameter Playground
-
-## Todo
-* Implement minimum-volume bounding ellipsoid for convex polyhedra
+# Inertial Parameter Identification for Convex Polyhedral Rigid Bodies
