@@ -1,6 +1,11 @@
 import numpy as np
 
 
+def vech(J):
+    """Half-vectorize the inertia matrix"""
+    return np.array([J[0, 0], J[0, 1], J[0, 2], J[1, 1], J[1, 2], J[2, 2]])
+
+
 def skew3(v):
     """Form a skew-symmetric matrix out of 3-dimensional vector v."""
     x, y, z = v
