@@ -20,7 +20,7 @@ def test_ellipsoid_sphere():
 def test_cube_bounding_ellipsoid():
     h = 0.5
     half_lengths = h * np.ones(3)
-    points = ip.cuboid_vertices(half_lengths)
+    points = ip.AxisAlignedBox(half_lengths).vertices
     ell = ip.minimum_bounding_ellipsoid(points)
     elld = ip.cube_bounding_ellipsoid(h)
     assert np.allclose(ell.Q, elld.Q)
@@ -31,7 +31,7 @@ def test_cube_bounding_ellipsoid_translated():
     offset = np.array([1, 1, 0])
 
     half_lengths = h * np.ones(3)
-    points = ip.cuboid_vertices(half_lengths)
+    points = ip.AxisAlignedBox(half_lengths).vertices
     points += offset
 
     ell = ip.minimum_bounding_ellipsoid(points)
@@ -44,7 +44,7 @@ def test_cube_bounding_ellipsoid_rotated():
     C = rotx(np.pi / 2) @ roty(np.pi / 4)
 
     half_lengths = h * np.ones(3)
-    points = ip.cuboid_vertices(half_lengths)
+    points = ip.AxisAlignedBox(half_lengths).vertices
     points = (C @ points.T).T
 
     ell = ip.minimum_bounding_ellipsoid(points)

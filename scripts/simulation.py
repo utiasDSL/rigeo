@@ -99,10 +99,10 @@ def main():
 
     urdf_path = Path(pybullet_data.getDataPath()) / "kuka_iiwa/model.urdf"
     model = ip.RobotKinematics.from_urdf_file(
-        urdf_path.as_posix(), tool_link_name="lbr_iiwa_joint_7"
+        urdf_path.as_posix(), tool_link_name="lbr_iiwa_link_7"
     )
 
-    # generate a random point-to-point joint space trajectories
+    # generate random point-to-point joint space trajectories
     # TODO we would like to make sure there are no collisions (cube with arm,
     # arm with arm, arm with ground, cube with ground)
     qds = np.pi * (np.random.random((NUM_TRAJ, model.nq)) - 0.5)
@@ -150,16 +150,18 @@ def main():
     # add noise to the force measurements
     w_noise = np.random.normal(scale=WRENCH_STDEV, size=(NUM_STEPS, 6))
 
+    prob_noiseless = IPIDProblem(Ys, ws, np.zeros_like(w_noise))
+    params_noiseless = prob_noiseless.solve_nominal()
+
     prob = IPIDProblem(Ys, ws, w_noise)
     params_nom = prob.solve_nominal()
     params_ell = prob.solve_ellipsoid(ellipsoid)
     params_poly = prob.solve_polyhedron(vertices)
 
+    print(f"no noise err = {np.linalg.norm(params.θ - params_noiseless.θ)}")
     print(f"nom err  = {np.linalg.norm(params.θ - params_nom.θ)}")
     print(f"ell err  = {np.linalg.norm(params.θ - params_ell.θ)}")
     print(f"poly err = {np.linalg.norm(params.θ - params_poly.θ)}")
-
-    IPython.embed()
 
 
 main()

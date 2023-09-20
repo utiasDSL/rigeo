@@ -4,21 +4,85 @@ from scipy.linalg import sqrtm
 from scipy.spatial import ConvexHull
 
 
-def cuboid_vertices(half_extents):
-    """Vertices of a cuboid with given half extents."""
-    x, y, z = half_extents
-    return np.array(
-        [
-            [x, y, z],
-            [x, y, -z],
-            [x, -y, z],
-            [x, -y, -z],
-            [-x, y, z],
-            [-x, y, -z],
-            [-x, -y, z],
-            [-x, -y, -z],
-        ]
-    )
+# def cuboid_vertices(half_extents):
+#     """Vertices of a cuboid with given half extents."""
+#     x, y, z = half_extents
+#     return np.array(
+#         [
+#             [x, y, z],
+#             [x, y, -z],
+#             [x, -y, z],
+#             [x, -y, -z],
+#             [-x, y, z],
+#             [-x, y, -z],
+#             [-x, -y, z],
+#             [-x, -y, -z],
+#         ]
+#     )
+
+
+class AxisAlignedBox:
+    def __init__(self, half_extents, center=None):
+        self.half_extents = np.array(half_extents)
+        assert self.half_extents.shape == (3,)
+        if center is None:
+            center = np.zeros(3)
+        self.center = np.array(center)
+
+    @classmethod
+    def cube(cls, half_extent, center=None):
+        half_extents = half_extent * np.ones(3)
+        return cls(half_extents, center=center)
+
+    @classmethod
+    def from_side_lengths(cls, side_lengths, center=None):
+        return cls(0.5 * side_lengths, center=center)
+
+    @classmethod
+    def from_two_vertices(cls, v1, v2):
+        center = 0.5 * (v1 + v2)
+        half_extents = 0.5 * (np.maximum(v1, v2) - np.minimum(v1, v2))
+        return cls(half_extents, center=center)
+
+    @property
+    def side_lengths(self):
+        return 2 * self.half_extents
+
+    @property
+    def vertices(self):
+        x, y, z = self.half_extents
+        return (
+            np.array(
+                [
+                    [x, y, z],
+                    [x, y, -z],
+                    [x, -y, z],
+                    [x, -y, -z],
+                    [-x, y, z],
+                    [-x, y, -z],
+                    [-x, -y, z],
+                    [-x, -y, -z],
+                ]
+            )
+            + self.center
+        )
+
+    def random_points(self, shape=1):
+        """Generate a set of random points contained in the box."""
+        d = self.half_extents.shape[0]
+        if type(shape) is int:
+            shape = (shape,)
+        shape = shape + (d,)
+
+        points = self.half_extents * (2 * np.random.random(shape) - 1) + self.center
+        if shape == (1, d):
+            return points.flatten()
+        return points
+
+    def contains(self, points):
+        """Test if the box contains a set of points."""
+        points = np.atleast_2d(points)
+        return (np.abs(points - self.center) <= self.half_extents).all(axis=1)
 
 
 def convex_hull(points):

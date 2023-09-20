@@ -76,7 +76,7 @@ class RigidBody:
         3x3 inertia matrix about w.r.t. O
     """
 
-    def __init__(self, mass, com, I):
+    def __init__(self, mass, com, I, tol=1e-8):
         self.mass = mass
         self.com = com
         self.I = I
@@ -85,7 +85,9 @@ class RigidBody:
         self.θ = np.concatenate([[mass], mass * com, util.vech(self.I)])
 
         assert mass > 0, "Mass must be positive."
-        assert np.min(np.linalg.eigvals(self.H)) >= 0, "H must be p.s.d."
+
+        min_H_λ = np.min(np.linalg.eigvals(self.H))
+        assert min_H_λ >= -tol, f"H must be p.s.d. but min eigenval is {min_H_λ}"
 
         S = util.skew3(com)
         # self.I = Ic - mass * S @ S
@@ -119,6 +121,20 @@ class RigidBody:
         com = point_mass_system_com(masses, points)
         I = point_mass_system_inertia(masses, points)[1]
         return cls(mass, com, I)
+
+    @classmethod
+    def translate_from_com(cls, mass, com, Ic):
+        S = util.skew3(com)
+        I = Ic - mass * S @ S
+        return cls(mass=mass, com=com, I=I)
+
+    def __add__(self, other):
+        return RigidBody.from_vector(self.θ + other.θ)
+
+    def __radd__(self, other):
+        if other == 0:
+            return self
+        return self.__add__(other)
 
     def body_wrench(self, V, A):
         """Compute the body-frame wrench about the reference point."""
