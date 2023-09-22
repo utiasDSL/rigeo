@@ -130,8 +130,9 @@ def main():
                 )
                 all_vertices.append(box.vertices)
                 Ic = ip.cuboid_inertia_matrix(masses[j], box.half_extents)
+                Hc = ip.I2H(Ic)
                 params = ip.RigidBody.translate_from_com(
-                    mass=masses[j], com=box.center, Ic=Ic
+                    mass=masses[j], h=masses[j] * box.center, Hc=Hc
                 )
                 all_params.append(params)
             params = sum(all_params)

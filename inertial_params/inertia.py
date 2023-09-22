@@ -39,12 +39,14 @@ def point_mass_system_inertia(masses, points):
     H = np.zeros((3, 3))
     for m, p in zip(masses, points):
         H += m * np.outer(p, p)
-    return H, np.trace(H) * np.eye(3) - H
+    return H, H2I(H)
 
+def point_mass_system_h(masses, points):
+    return np.sum(masses[:, None] * points, axis=0)
 
 def point_mass_system_com(masses, points):
     """Center of mass of a finite set of point masses."""
-    return np.sum(masses[:, None] * points, axis=0) / np.sum(masses)
+    return point_mass_system_h(masses, points) / np.sum(masses)
 
 
 def H2I(H):
@@ -76,27 +78,46 @@ class RigidBody:
         3x3 inertia matrix about w.r.t. O
     """
 
-    def __init__(self, mass, com, I, tol=1e-8):
+    def __init__(self, mass, h, H, tol=1e-8):
         self.mass = mass
-        self.com = com
-        self.I = I
-        self.H = I2H(I)
-        self.J = pseudo_inertia_matrix(mass, com, self.H)
-        self.θ = np.concatenate([[mass], mass * com, util.vech(self.I)])
+        self.h = h
+        self.H = H
 
-        assert mass > 0, "Mass must be positive."
+        assert mass >= -tol, f"Mass must be non-negative but is {mass}."
 
         min_H_λ = np.min(np.linalg.eigvals(self.H))
         assert min_H_λ >= -tol, f"H must be p.s.d. but min eigenval is {min_H_λ}"
 
-        S = util.skew3(com)
-        # self.I = Ic - mass * S @ S
-        self.M = np.block([[mass * np.eye(3), -mass * S], [mass * S, self.I]])
+    @property
+    def com(self):
+        return self.h / self.mass
+
+    @property
+    def θ(self):
+        return np.concatenate([[self.mass], self.h, util.vech(self.I)])
+
+    @property
+    def I(self):
+        return H2I(self.H)
+
+    @property
+    def J(self):
+        J = np.zeros((4, 4))
+        J[:3, :3] = self.H
+        J[:3, 3] = self.h
+        J[3, :3] = self.h
+        J[3, 3] = self.mass
+        return J
+
+    @property
+    def M(self):
+        S = util.skew3(self.h)
+        return np.block([[self.mass * np.eye(3), -S], [S, self.I]])
 
     @classmethod
     def from_vector(cls, θ):
         mass = θ[0]
-        com = θ[1:4] / mass
+        h = θ[1:4]
         # fmt: off
         I = np.array([
             [θ[4], θ[5], θ[6]],
@@ -104,32 +125,37 @@ class RigidBody:
             [θ[6], θ[8], θ[9]]
         ])
         # fmt: on
-        return cls(mass=mass, com=com, I=I)
+        return cls(mass=mass, h=h, H=I2H(I))
 
     @classmethod
     def from_pseudo_inertia_matrix(cls, J):
         H = J[:3, :3]
-        h = J[0, :3]
+        h = J[3, :3]
         mass = J[3, 3]
-        I = np.trace(H) * np.eye(3) - H
-        com = h / mass
-        return cls(mass=mass, com=com, I=I)
+        return cls(mass=mass, h=h, H=H)
 
     @classmethod
     def from_point_masses(cls, masses, points):
         mass = sum(masses)
-        com = point_mass_system_com(masses, points)
-        I = point_mass_system_inertia(masses, points)[1]
-        return cls(mass, com, I)
+        h = point_mass_system_h(masses, points)
+        H = point_mass_system_inertia(masses, points)[0]
+        return cls(mass=mass, h=h, H=H)
 
     @classmethod
-    def translate_from_com(cls, mass, com, Ic):
-        S = util.skew3(com)
-        I = Ic - mass * S @ S
-        return cls(mass=mass, com=com, I=I)
+    def translate_from_com(cls, mass, h, Hc):
+        H = Hc + np.outer(h, h) / mass
+        return cls(mass=mass, h=h, H=H)
+
+    @classmethod
+    def from_mcI(cls, mass, com, I):
+        h = com / mass
+        H = I2H(I)
+        return cls(mass=mass, h=h, H=H)
 
     def __add__(self, other):
-        return RigidBody.from_vector(self.θ + other.θ)
+        return RigidBody(
+            mass=self.mass + other.mass, h=self.h + other.h, H=self.H + other.H
+        )
 
     def __radd__(self, other):
         if other == 0:
@@ -138,6 +164,5 @@ class RigidBody:
 
     def body_wrench(self, V, A):
         """Compute the body-frame wrench about the reference point."""
-        return self.M @ A + util.skew6(V) @ self.M @ V
-
-
+        M = self.M
+        return M @ A + util.skew6(V) @ M @ V
