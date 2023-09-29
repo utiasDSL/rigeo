@@ -26,6 +26,16 @@ def test_cube_bounding_ellipsoid():
     assert np.allclose(ell.Q, elld.Q)
 
 
+def test_cube_inscribed_ellipsoid():
+    h = 0.5
+    half_lengths = h * np.ones(3)
+    points = ip.AxisAlignedBox(half_lengths).vertices
+    A, b = ip.polyhedron_span_to_face_form(points)
+    ell = ip.maximum_inscribed_ellipsoid(A, b)
+    elld = ip.cube_inscribed_ellipsoid(h)
+    assert np.allclose(ell.Q, elld.Q)
+
+
 def test_cube_bounding_ellipsoid_translated():
     h = 0.5
     offset = np.array([1, 1, 0])
