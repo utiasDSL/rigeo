@@ -19,6 +19,8 @@ DURATION = 10
 NUM_STEPS = DURATION * FREQ
 TIMESTEP = 1.0 / FREQ
 
+SIM_FREQ = 100
+
 NUM_OBJ = 10
 NUM_TRAJ = 2
 NUM_PRIMITIVES = 10
@@ -26,6 +28,8 @@ BOUNDING_BOX_HALF_EXTENT = 0.1
 OFFSET = np.array([0, 0, 0.2])
 MASS = 1.0
 GRAVITY = np.array([0, 0, -9.81])
+
+VISUALIZE_TRAJECTORIES = True
 
 
 def simulate_trajectories(q0, qds, timescaling, model, params):
@@ -84,10 +88,13 @@ def main():
     )
     args = parser.parse_args()
 
-    urdf_path = Path(pybullet_data.getDataPath()) / "kuka_iiwa/model.urdf"
-    model = ip.RobotKinematics.from_urdf_file(
-        urdf_path.as_posix(), tool_link_name="lbr_iiwa_link_7"
-    )
+    urdf_path = (ip.get_urdf_path() / "ur10.urdf").as_posix()
+    model = ip.RobotKinematics.from_urdf_file(urdf_path, tool_link_name="ur10_tool0")
+
+    # urdf_path = Path(pybullet_data.getDataPath()) / "kuka_iiwa/model.urdf"
+    # model = ip.RobotKinematics.from_urdf_file(
+    #     urdf_path.as_posix(), tool_link_name="lbr_iiwa_link_7"
+    # )
 
     # generate random point-to-point joint space trajectories
     # TODO we would like to make sure there are no collisions (cube with arm,

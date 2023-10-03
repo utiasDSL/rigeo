@@ -42,6 +42,24 @@ def check_polyhedron_realizable(vertices, m, c, H):
     return False, None
 
 
+def max_point_in_direction(V, u):
+    n = V.shape[0]
+    d = cp.Variable(1)
+    w = cp.Variable(n)
+
+    objective = cp.Maximize(d)
+    constraints = [
+        d * u == V.T @ w,
+        w >= 0,
+        cp.sum(w) == 1,
+    ]
+    problem = cp.Problem(objective, constraints)
+    problem.solve(solver=cp.SCS)
+
+    point = d.value * u
+    return point, d.value
+
+
 def main():
     np.random.seed(0)
 
@@ -51,15 +69,20 @@ def main():
     vertices = box.vertices
     n = vertices.shape[0]
 
-    points = box.grid(n=10)
-    Ps = np.array([np.outer(p, p) for p in points])
+    vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    com = np.sum(vertices, axis=0) / 4
+    vertices = vertices - com
+
+    # points = box.grid(n=10)
+    # Ps = np.array([np.outer(p, p) for p in points])
 
     Q = ip.cube_inscribed_ellipsoid(h).Q
 
     N = 1000
     for i in range(N):
         mass = 1.0
-        c = box.random_points()
+        # c = box.random_points()
+        c = np.zeros(3)
         h = mass * c
 
         # second term ensures this satisfies Π >> 0
@@ -73,6 +96,28 @@ def main():
             # points = np.vstack((vertices, box.random_points(shape=500)))
             # points = grid
             # Ps = np.array([np.outer(p, p) for p in points])
+
+            λ, U = np.linalg.eig(Hc)
+
+            d_max = np.zeros(3)
+            d_min = np.zeros(3)
+            for i in range(3):
+                u = U[:, i]
+                d_max[i] = max_point_in_direction(vertices, u)[1]
+                d_min[i] = -max_point_in_direction(vertices, -u)[1]
+
+            m2_2 = λ / (d_max * (d_max - d_min))
+            m2_1 = -m2_2 * d_max / d_min
+            m2 = np.concatenate((m2_1, m2_2))
+
+            # TODO in the non-symmetric case this needs to be more clever
+            # m2 = np.concatenate((m1, m1)) / 2
+            p1 = np.vstack(((d_min * U).T, (d_max * U).T))
+            Ps = np.array([np.outer(p, p) for p in p1])
+            H1 = sum([m * P for m, P in zip(m2, Ps)])
+            # eigenvecs are cols of U
+            IPython.embed()
+            return
 
             # check ellipsoid feasibility
             if np.trace(Q @ params.J) < 0:

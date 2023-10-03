@@ -1,3 +1,4 @@
+from pathlib import Path
 import numpy as np
 
 
@@ -40,3 +41,14 @@ def lift6(x):
         [a[:, None], skew3(b), np.zeros((3, 6))],
         [np.zeros((3, 1)), -skew3(a), lift3(b)]])
     # fmt: on
+
+
+def get_urdf_path():
+    """Obtain the path to the extra URDFs packaged with pyb_utils.
+
+    Returns
+    -------
+    : pathlib.Path
+        The path to the directory containing extra pyb_utils URDFs.
+    """
+    return (Path(__file__).parent.parent / "urdf").resolve()
