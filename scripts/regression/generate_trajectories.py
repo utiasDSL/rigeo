@@ -4,16 +4,19 @@ from pathlib import Path
 import pickle
 import time
 
+import rospkg
 import numpy as np
 import pinocchio
 import pybullet as pyb
 import pybullet_data
 import pyb_utils
 
+import mobile_manipulation_central as mm
 import inertial_params as ip
 
 import IPython
 
+# TODO life would be easier if this entered the catkin workspace
 
 FREQ = 10
 DURATION = 10
@@ -69,6 +72,16 @@ def generate_trajectory(model, q0, timescaling, max_tries=100, step=0.1):
     raise Exception("Failed to generate collision free point!")
 
 
+def make_urdf_file():
+    rospack = rospkg.RosPack()
+    path = Path(rospack.get_path("inertial_params")) / "urdf/thing_pyb.urdf"
+    includes = [
+        "$(find mobile_manipulation_central)/urdf/xacro/thing_pyb.urdf.xacro",
+    ]
+    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
+    return path.as_posix()
+
+
 def main():
     np.set_printoptions(suppress=True, precision=6)
     np.random.seed(0)
@@ -77,8 +90,8 @@ def main():
     parser.add_argument("outfile", help="File to save the data to.")
     args = parser.parse_args()
 
-    urdf_path = (ip.get_urdf_path() / "ur10.urdf").as_posix()
-    model = ip.RobotKinematics.from_urdf_file(urdf_path, tool_link_name="ur10_tool0")
+    model = mm.MobileManipulatorKinematics(tool_link_name="gripper")
+    urdf_path = make_urdf_file()
 
     pyb.connect(pyb.GUI)
     pyb.setTimeStep(1.0 / SIM_FREQ)
@@ -91,15 +104,21 @@ def main():
         [0, 0, 0],
         useFixedBase=True,
     )
-    robot = pyb_utils.Robot(robot_id, tool_joint_name="ur10_flange-tool0")
-    # q0 = np.array([0, -0.1745, 1.5708, -1.3963, 1.5708, 1.3100])
-    q0 = np.array([0, -np.pi / 2, 0, 0, 0, 0])
+    robot = pyb_utils.Robot(robot_id, tool_joint_name="tool_gripper_joint")
+
+    q0 = np.array([0, 0, 0, 0, -np.pi / 2, 0, 0, 0, 0])
     robot.reset_joint_configuration(q0)
 
     model.forward(q0)
-    r_ew_w, C_we = model.link_pose()
+    r_ew_w, C_we = model.link_pose(rotation_matrix=True)
     r_ow_w = r_ew_w + C_we @ OFFSET
     pyb_utils.BulletBody.box(r_ow_w, half_extents=[BOUNDING_BOX_HALF_EXTENT] * 3)
+
+    # NOTE: we need to deal with the offset between these two!
+    r_pyb, C_pyb = robot.get_link_frame_pose(as_rotation_matrix=True)
+
+    IPython.embed()
+    return
 
     timescaling = ip.QuinticTimeScaling(duration=DURATION / NUM_TRAJ)
     traj_idx = 0

@@ -93,31 +93,32 @@ def main():
         realizable, m0 = check_polyhedron_realizable(vertices, mass, c, H)
         if realizable:
             # points = np.vstack((vertices, c))
+            points = vertices
             # points = np.vstack((vertices, box.random_points(shape=500)))
             # points = grid
-            # Ps = np.array([np.outer(p, p) for p in points])
+            Ps = np.array([np.outer(p, p) for p in points])
 
-            λ, U = np.linalg.eig(Hc)
+            # λ, U = np.linalg.eig(Hc)
+            #
+            # d_max = np.zeros(3)
+            # d_min = np.zeros(3)
+            # for i in range(3):
+            #     u = U[:, i]
+            #     d_max[i] = max_point_in_direction(vertices, u)[1]
+            #     d_min[i] = -max_point_in_direction(vertices, -u)[1]
+            #
+            # m2_2 = λ / (d_max * (d_max - d_min))
+            # m2_1 = -m2_2 * d_max / d_min
+            # m2 = np.concatenate((m2_1, m2_2))
 
-            d_max = np.zeros(3)
-            d_min = np.zeros(3)
-            for i in range(3):
-                u = U[:, i]
-                d_max[i] = max_point_in_direction(vertices, u)[1]
-                d_min[i] = -max_point_in_direction(vertices, -u)[1]
-
-            m2_2 = λ / (d_max * (d_max - d_min))
-            m2_1 = -m2_2 * d_max / d_min
-            m2 = np.concatenate((m2_1, m2_2))
-
-            # TODO in the non-symmetric case this needs to be more clever
-            # m2 = np.concatenate((m1, m1)) / 2
-            p1 = np.vstack(((d_min * U).T, (d_max * U).T))
-            Ps = np.array([np.outer(p, p) for p in p1])
-            H1 = sum([m * P for m, P in zip(m2, Ps)])
-            # eigenvecs are cols of U
-            IPython.embed()
-            return
+            # # TODO in the non-symmetric case this needs to be more clever
+            # # m2 = np.concatenate((m1, m1)) / 2
+            # p1 = np.vstack(((d_min * U).T, (d_max * U).T))
+            # Ps = np.array([np.outer(p, p) for p in p1])
+            # H1 = sum([m * P for m, P in zip(m2, Ps)])
+            # # eigenvecs are cols of U
+            # IPython.embed()
+            # return
 
             # check ellipsoid feasibility
             if np.trace(Q @ params.J) < 0:
@@ -131,8 +132,10 @@ def main():
             objective = cp.Minimize(cp.sum(m_opt))
             constraints = [
                 m_opt >= 0,
-                cp.sum(m_opt) == mass,
-                m_opt.T @ points == h,
+                # cp.sum(m_opt) == mass,
+                # m_opt.T @ points == h,
+                # H_opt == H,
+                cp.sum(m_opt) <= mass,
                 H_opt == H,
             ]
             problem = cp.Problem(objective, constraints)

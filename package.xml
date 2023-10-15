@@ -1,0 +1,10 @@
+<?xml version="1.0"?>
+<package format="2">
+  <name>inertial_params</name>
+  <version>0.1.0</version>
+  <description>Rigid body inertial parameter estimation.</description>
+  <maintainer email="adam.heins@robotics.utias.utoronto.ca">Adam Heins</maintainer>
+  <license>MIT</license>
+
+  <buildtool_depend>catkin</buildtool_depend>
+</package>
