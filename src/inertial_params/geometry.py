@@ -1,22 +1,9 @@
-import functools
-
+"""Polyhedral and ellipsoidal geometry."""
 import numpy as np
 import cvxpy as cp
 import cdd
 from scipy.linalg import sqrtm, orth
 from scipy.spatial import ConvexHull
-
-
-# TODO this cannot be made general for the ellipsoid and the convex hull
-# without a lot of cludge
-# def lowranknoproblem(f, rcond=None):
-#     @functools.wraps(f)
-#     def wrapper(points, **kwargs):
-#         R = orth(points.T, rcond=rcond)
-#         P = points @ R
-#         H = f(P, **kwargs)
-#         pass
-#     return wrapper
 
 
 def convex_hull(points, rcond=None):
@@ -152,24 +139,35 @@ class Ellipsoid:
     """Ellipsoid with a variety of representations."""
 
     def __init__(self, Einv, c):
+        assert Einv.ndim == 2
+        assert Einv.shape[0] == Einv.shape[1]
+        assert Einv.shape[0] == c.shape[0]
+
         self.Einv = Einv
         self.c = c
+        self.dim = c.shape[0]
+        self.rank = np.linalg.matrix_rank(Einv)
 
     @classmethod
-    def sphere(cls, radius):
-        Einv = np.eye(3) / radius**2
-        return cls(Einv=Einv, c=np.zeros(3))
+    def sphere(cls, radius, dim=3):
+        Einv = np.eye(dim) / radius**2
+        return cls(Einv=Einv, c=np.zeros(dim))
 
     @classmethod
-    def from_Ab(cls, A, b):
+    def from_Ab(cls, A, b, rcond=None):
         Einv = A @ A
-        c = np.linalg.solve(A, -b)
+
+        # use least squares instead of direct solve in case we have a
+        # degenerate ellipsoid
+        c = np.linalg.lstsq(A, -b, rcond=rcond)[0]
         return cls(Einv=Einv, c=c)
 
     @classmethod
     def from_Q(cls, Q):
-        Einv = -Q[:3, :3]
-        q = Q[:3, 3]
+        assert Q.shape[0] == Q.shape[1]
+        dim = Q.shape[0] - 1
+        Einv = -Q[:dim, :dim]
+        q = Q[:dim, dim]
         c = np.linalg.solve(Einv, q)
         return cls(Einv=Einv, c=c)
 
@@ -183,12 +181,15 @@ class Ellipsoid:
 
     @property
     def Q(self):
-        Q = np.zeros((4, 4))
-        Q[:3, :3] = -self.Einv
-        Q[:3, 3] = self.Einv @ self.c
-        Q[3, :3] = Q[:3, 3]
-        Q[3, 3] = 1 - self.c @ self.Einv @ self.c
+        Q = np.zeros((self.dim + 1, self.dim + 1))
+        Q[: self.dim, : self.dim] = -self.Einv
+        Q[: self.dim, self.dim] = self.Einv @ self.c
+        Q[self.dim, : self.dim] = Q[: self.dim, self.dim]
+        Q[self.dim, self.dim] = 1 - self.c @ self.Einv @ self.c
         return Q
+
+    def degenerate(self):
+        return self.rank < self.dim
 
     def contains(self, x):
         """Return True if x is inside the ellipsoid, False otherwise."""
@@ -196,10 +197,16 @@ class Ellipsoid:
         return p @ self.Einv @ p <= 1
 
     def transform(self, C=None, r=None):
+        if C is None and r is None:
+            return Ellipsoid(Einv=self.Einv.copy(), c=self.c.copy())
+
         if C is None:
-            C = np.eye(3)
+            dim = r.shape[0]
+            C = np.eye(dim)
         if r is None:
-            r = np.zeros(3)
+            dim = C.shape[0]
+            r = np.zeros(dim)
+
         Einv = C @ self.Einv @ C.T
         c = self.c + r
         return Ellipsoid(Einv=Einv, c=c)
@@ -222,36 +229,53 @@ def cube_inscribed_ellipsoid(h):
     return Ellipsoid.sphere(h)
 
 
-# TODO currently this only works with non-degenerate ellipsoids
-def minimum_bounding_ellipsoid(points):
+def minimum_bounding_ellipsoid(points, rcond=None):
     """Compute the minimum bounding ellipsoid for a set of points.
 
     See Convex Optimization by Boyd & Vandenberghe, sec. 8.4.1.
 
     Returns the ellipsoid.
     """
+    # rowspace
+    R = orth(points.T, rcond=rcond)
+
+    # project onto the rowspace
+    # this allows us to handle degenerate sets of points that live in a
+    # lower-dimensional subspace than R^d
+    P = points @ R
+
+    dim = P.shape[1]
+
     # ellipsoid is parameterized as ||Ax + b|| <= 1 for the opt problem
-    A = cp.Variable((3, 3), PSD=True)
-    b = cp.Variable(3)
+    A = cp.Variable((dim, dim), PSD=True)
+    b = cp.Variable(dim)
 
     objective = cp.Minimize(-cp.log_det(A))
-    constraints = [cp.norm2(A @ x + b) <= 1 for x in points]
+    constraints = [cp.norm2(A @ x + b) <= 1 for x in P]
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)
 
-    return Ellipsoid.from_Ab(A=A.value, b=b.value)
+    # unproject back into the original space
+    A = R @ A.value @ R.T
+    b = R @ b.value
+    return Ellipsoid.from_Ab(A=A, b=b, rcond=rcond)
 
 
-def maximum_inscribed_ellipsoid(A, b):
-    """Compute the maximum inscribed ellipsoid for an inequality-form polyhedron.
+# TODO this also does not handle degeneracy
+def _maximum_inscribed_ellipsoid_inequality_form(A, b):
+    """Compute the maximum inscribed ellipsoid for an inequality-form
+    polyhedron P = {x | Ax <= b}.
 
     See Convex Optimization by Boyd & Vandenberghe, sec. 8.4.2.
 
     Returns the ellipsoid.
     """
-    B = cp.Variable((3, 3), PSD=True)
-    c = cp.Variable(3)
+
+    dim = A.shape[1]
     n = b.shape[0]
+
+    B = cp.Variable((dim, dim), PSD=True)
+    c = cp.Variable(dim)
 
     objective = cp.Maximize(cp.log_det(B))
     constraints = [cp.norm2(B @ A[i, :]) + A[i, :] @ c <= b[i] for i in range(n)]
@@ -260,3 +284,28 @@ def maximum_inscribed_ellipsoid(A, b):
 
     E = B.value @ B.value
     return Ellipsoid(Einv=np.linalg.inv(E), c=c.value)
+
+
+def maximum_inscribed_ellipsoid(vertices, rcond=None):
+    """Compute the maximum inscribed ellipsoid for a polyhedron represented by
+    a set of vertices.
+
+    Returns the ellipsoid.
+    """
+    # rowspace
+    R = orth(vertices.T, rcond=rcond)
+
+    # project onto the rowspace
+    # this allows us to handle degenerate sets of points that live in a
+    # lower-dimensional subspace than R^d
+    P = vertices @ R
+
+    # solve the problem a possibly lower-dimensional space where the set of
+    # vertices is full-rank
+    A, b = polyhedron_span_to_face_form(P)
+    ell = _maximum_inscribed_ellipsoid_inequality_form(A, b)
+
+    # unproject back into the original space
+    Einv = R @ ell.Einv @ R.T
+    c = R @ ell.c
+    return Ellipsoid(Einv=Einv, c=c)

@@ -7,6 +7,24 @@ def test_ellipsoid_sphere():
     ell = ip.Ellipsoid.sphere(radius=0.5)
     assert ell.contains([0.4, 0, 0])
     assert not ell.contains([0.6, 0, 0])
+    assert ell.rank == 3
+    assert not ell.degenerate()
+
+    ell2 = ip.Ellipsoid.from_Ab(A=ell.A, b=ell.b)
+    assert np.allclose(ell.Einv, ell2.Einv)
+    assert np.allclose(ell.c, ell2.c)
+
+    ell3 = ip.Ellipsoid.from_Q(Q=ell.Q)
+    assert np.allclose(ell.Einv, ell3.Einv)
+    assert np.allclose(ell.c, ell3.c)
+
+
+def test_ellipsoid_hypersphere():
+    ell = ip.Ellipsoid.sphere(radius=0.5, dim=4)
+    assert ell.contains([0.4, 0, 0, 0])
+    assert not ell.contains([0.6, 0, 0, 0])
+    assert ell.rank == 4
+    assert not ell.degenerate()
 
     ell2 = ip.Ellipsoid.from_Ab(A=ell.A, b=ell.b)
     assert np.allclose(ell.Einv, ell2.Einv)
@@ -23,16 +41,6 @@ def test_cube_bounding_ellipsoid():
     points = ip.AxisAlignedBox(half_lengths).vertices
     ell = ip.minimum_bounding_ellipsoid(points)
     elld = ip.cube_bounding_ellipsoid(h)
-    assert np.allclose(ell.Q, elld.Q)
-
-
-def test_cube_inscribed_ellipsoid():
-    h = 0.5
-    half_lengths = h * np.ones(3)
-    points = ip.AxisAlignedBox(half_lengths).vertices
-    A, b = ip.polyhedron_span_to_face_form(points)
-    ell = ip.maximum_inscribed_ellipsoid(A, b)
-    elld = ip.cube_inscribed_ellipsoid(h)
     assert np.allclose(ell.Q, elld.Q)
 
 
@@ -62,9 +70,55 @@ def test_cube_bounding_ellipsoid_rotated():
     assert np.allclose(ell.Q, elld.Q)
 
 
-# def test_line_bounding_ellipsoid():
-#     points = np.array([[0.5, 0, 0], [-0.5, 0, 0]])
-#     # TODO we need to project points into the nullspace to avoid degenerate
-#     # ellipsoids
-#     Q = ip.minimum_bounding_ellipsoid(points)
-#     print(Q)
+def test_bounding_ellipoid_4d():
+    np.random.seed(0)
+
+    dim = 4
+    points = np.random.random((20, dim))
+    ell = ip.minimum_bounding_ellipsoid(points)
+    for x in points:
+        assert ell.contains(x)
+
+
+def test_bounding_ellipsoid_degenerate():
+    points = np.array([[0.5, 0, 0], [-0.5, 0, 0]])
+    ell = ip.minimum_bounding_ellipsoid(points)
+    assert ell.rank == 1
+    assert ell.degenerate()
+    for x in points:
+        assert ell.contains(x)
+
+
+def test_cube_inscribed_ellipsoid():
+    h = 0.5
+    half_lengths = h * np.ones(3)
+    vertices = ip.AxisAlignedBox(half_lengths).vertices
+    ell = ip.maximum_inscribed_ellipsoid(vertices)
+    elld = ip.cube_inscribed_ellipsoid(h)
+    assert np.allclose(ell.Q, elld.Q)
+
+
+def test_inscribed_ellipsoid_4d():
+    np.random.seed(0)
+
+    dim = 4
+    points = np.random.random((20, dim))
+    vertices = ip.convex_hull(points)
+    # A, b = ip.polyhedron_span_to_face_form(vertices)
+    ell = ip.maximum_inscribed_ellipsoid(vertices)
+
+    # check that all the vertices are on the border or outside of the
+    # ellipsoid
+    for x in vertices:
+        assert (x - ell.c).T @ ell.Einv @ (x - ell.c) >= 1
+
+
+def test_inscribed_ellipsoid_degenerate():
+    vertices = np.array([[1, 1, 0], [-1, 1, 0], [-1, -1, 0], [1, -1, 0]])
+    ell = ip.maximum_inscribed_ellipsoid(vertices)
+    assert ell.rank == 2
+
+    # check that all the vertices are on the border or outside of the
+    # ellipsoid
+    for x in vertices:
+        assert (x - ell.c).T @ ell.Einv @ (x - ell.c) >= 1
