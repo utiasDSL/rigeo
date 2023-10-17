@@ -1,11 +1,25 @@
+import functools
+
 import numpy as np
 import cvxpy as cp
 import cdd
-from scipy.linalg import sqrtm
+from scipy.linalg import sqrtm, orth
 from scipy.spatial import ConvexHull
 
 
-def convex_hull(points):
+# TODO this cannot be made general for the ellipsoid and the convex hull
+# without a lot of cludge
+# def lowranknoproblem(f, rcond=None):
+#     @functools.wraps(f)
+#     def wrapper(points, **kwargs):
+#         R = orth(points.T, rcond=rcond)
+#         P = points @ R
+#         H = f(P, **kwargs)
+#         pass
+#     return wrapper
+
+
+def convex_hull(points, rcond=None):
     """Get the vertices of the convex hull of a set of points.
 
     Parameters
@@ -21,8 +35,20 @@ def convex_hull(points):
         The :math:`m\\times d` array of vertices of the convex hull that fully
         contains the set of points.
     """
-    hull = ConvexHull(points)
-    return points[hull.vertices, :]
+    # rowspace
+    R = orth(points.T, rcond=rcond)
+
+    # project onto the rowspace
+    # this allows us to handle degenerate sets of points that live in a
+    # lower-dimensional subspace than R^d
+    P = points @ R
+
+    # find the hull
+    hull = ConvexHull(P)
+    H = P[hull.vertices, :]
+
+    # unproject
+    return H @ R.T
 
 
 def polyhedron_span_to_face_form(vertices):
