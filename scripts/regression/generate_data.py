@@ -20,8 +20,6 @@ DURATION = 10
 NUM_STEPS = DURATION * FREQ
 TIMESTEP = 1.0 / FREQ
 
-SIM_FREQ = 100
-
 NUM_OBJ = 10
 NUM_TRAJ = 2
 NUM_PRIMITIVES = 10
@@ -29,8 +27,6 @@ BOUNDING_BOX_HALF_EXTENT = 0.1
 OFFSET = np.array([0, 0, 0.2])
 MASS = 1.0
 GRAVITY = np.array([0, 0, -9.81])
-
-VISUALIZE_TRAJECTORIES = True
 
 
 def simulate_trajectories(q0, qds, timescaling, model, params):

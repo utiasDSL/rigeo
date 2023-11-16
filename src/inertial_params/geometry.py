@@ -56,7 +56,33 @@ def polyhedron_span_to_face_form(vertices):
     return A, b
 
 
+def polyhedron_grid(vertices, n):
+    bounding_box = AxisAlignedBox.from_points_to_bound(vertices)
+    box_grid = bounding_box.grid(n)
+    A, b = polyhedron_span_to_face_form(vertices)
+    contains = (A @ box_grid.T <= b[:, None]).T.all(axis=1)
+    return box_grid[contains, :]
+
+
 class AxisAlignedBox:
+    """A box aligned with the x, y, z axes.
+
+    Parameters
+    ----------
+    half_extents :
+        The (x, y, z) half extents of the box. The half extents are each half
+        the length of the corresponding side lengths.
+    center :
+        The center of the box. Defaults to the origin.
+
+    Attributes
+    ----------
+    half_extents :
+        The (x, y, z) half extents of the box.
+    center :
+        The center of the box.
+    """
+
     def __init__(self, half_extents, center=None):
         self.half_extents = np.array(half_extents)
         assert self.half_extents.shape == (3,)
@@ -78,6 +104,15 @@ class AxisAlignedBox:
         center = 0.5 * (v1 + v2)
         half_extents = 0.5 * (np.maximum(v1, v2) - np.minimum(v1, v2))
         return cls(half_extents, center=center)
+
+    @classmethod
+    def from_points_to_bound(cls, points):
+        v_min = np.min(points, axis=0)
+        v_max = np.max(points, axis=0)
+        return cls.from_two_vertices(v_min, v_max)
+
+    def __repr__(self):
+        return f"AxisAlignedBox(center={self.center}, half_extents={self.half_extents})"
 
     @property
     def side_lengths(self):
@@ -114,12 +149,24 @@ class AxisAlignedBox:
             return points.flatten()
         return points
 
-    def contains(self, points):
+    def contains(self, points, tol=1e-8):
         """Test if the box contains a set of points."""
         points = np.atleast_2d(points)
-        return (np.abs(points - self.center) <= self.half_extents).all(axis=1)
+        return (np.abs(points - self.center) <= self.half_extents + tol).all(axis=1)
 
     def grid(self, n):
+        """Generate a set of points evenly spaced in the box.
+
+        Parameters
+        ----------
+        n : int
+            The number of points in each of the three dimensions.
+
+        Returns
+        -------
+        :
+            An array of points with shape ``(n**3, 3)``.
+        """
         L = self.center - self.half_extents
         U = self.center + self.half_extents
 

@@ -18,6 +18,8 @@ import IPython
 # these values are taken from the Robotiq FT-300 datasheet
 WRENCH_STDEV = np.array([1.2, 1.2, 0.5, 0.02, 0.02, 0.03])
 
+DISC_GRID_SIZE = 10
+
 
 def J_vec_constraint(J, θ):
     """Constraint to enforce consistency between J and θ representations."""
@@ -32,6 +34,29 @@ def J_vec_constraint(J, θ):
     ]
 
 
+class DiscretizedIPIDProblem:
+    def __init__(self, Ys, ws, ws_noise):
+        self.A = np.vstack(Ys)
+        self.b = np.concatenate(ws + ws_noise)
+        self.θ = cp.Variable(10)
+        self.Jopt = cp.Variable((4, 4), PSD=True)
+
+    def solve(self, points):
+        masses = cp.Variable(points.shape[0])
+        objective = cp.Minimize(cp.sum_squares(self.A @ self.θ - self.b))
+        Ps = np.array([np.outer(p, p) for p in points])
+        constraints = [
+            masses >= 0,
+            cp.sum(masses) == self.θ[0],
+            masses.T @ points == self.θ[1:4],
+            self.Jopt[:3, :3] == cp.sum([m * P for m, P in zip(masses, Ps)]),
+        ] + J_vec_constraint(self.Jopt, self.θ)
+        problem = cp.Problem(objective, constraints)
+        problem.solve(solver=cp.MOSEK)
+        print(f"disc solve time = {problem.solver_stats.solve_time}")
+        return ip.RigidBody.from_vector(self.θ.value)
+
+
 class IPIDProblem:
     """Inertial parameter identification optimization problem."""
 
@@ -41,7 +66,7 @@ class IPIDProblem:
         self.θ = cp.Variable(10)
         self.Jopt = cp.Variable((4, 4), PSD=True)
 
-    def _solve(self, extra_constraints=None):
+    def _solve(self, extra_constraints=None, name=None):
         objective = cp.Minimize(cp.sum_squares(self.A @ self.θ - self.b))
 
         constraints = J_vec_constraint(self.Jopt, self.θ)
@@ -50,6 +75,8 @@ class IPIDProblem:
 
         problem = cp.Problem(objective, constraints)
         problem.solve(solver=cp.MOSEK)
+        if name is not None:
+            print(f"{name} solve time = {problem.solver_stats.solve_time}")
         return ip.RigidBody.from_vector(self.θ.value)
 
     def solve_nominal(self):
@@ -69,7 +96,7 @@ class IPIDProblem:
             mvs.T @ vertices == self.θ[1:4],
             self.Jopt[:3, :3] << cp.sum([m * V for m, V in zip(mvs, Vs)]),
         ]
-        return self._solve(extra_constraints)
+        return self._solve(extra_constraints, name="poly")
 
     def solve_both(self, vertices, ellipsoid):
         nv = vertices.shape[0]
@@ -100,9 +127,10 @@ def main():
         params = data["params"][i]
         vertices = data["vertices"][i]
         ellipsoid = ip.minimum_bounding_ellipsoid(vertices)
+        grid = ip.polyhedron_grid(vertices, n=DISC_GRID_SIZE)
 
-        Ys = np.array(data["obj_data"][i]["Ys"])
-        ws = np.array(data["obj_data"][i]["ws"])
+        Ys = np.array(data["obj_data"][i]["Ys"])[::10]
+        ws = np.array(data["obj_data"][i]["ws"])[::10]
 
         # generate random noise on the force measurements
         ws_noise = np.random.normal(scale=WRENCH_STDEV, size=ws.shape)
@@ -118,6 +146,9 @@ def main():
         params_ell = prob.solve_ellipsoid(ellipsoid)
         params_both = prob.solve_both(vertices, ellipsoid)
 
+        disc_prob = DiscretizedIPIDProblem(Ys, ws, ws_noise)
+        params_grid = disc_prob.solve(grid)
+
         print(f"\nProblem {i + 1}")
         print(f"nv = {vertices.shape[0]}")
         print(f"no noise err = {np.linalg.norm(params.θ - params_noiseless.θ)}")
@@ -125,6 +156,7 @@ def main():
         print(f"ell err  = {np.linalg.norm(params.θ - params_ell.θ)}")
         print(f"poly err = {np.linalg.norm(params.θ - params_poly.θ)}")
         print(f"both err = {np.linalg.norm(params.θ - params_both.θ)}")
+        print(f"disc err = {np.linalg.norm(params.θ - params_grid.θ)}")
 
 
 main()

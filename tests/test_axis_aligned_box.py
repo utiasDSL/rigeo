@@ -47,3 +47,18 @@ def test_axis_aligned_box_random_points():
 
     points = box.random_points(10)
     assert box.contains(points).all()
+
+
+def test_axis_aligned_box_from_points_to_bound():
+    np.random.seed(0)
+    points = np.random.random((100, 3))
+    box = ip.AxisAlignedBox.from_points_to_bound(points)
+    assert box.contains(points).all()
+
+
+def test_axis_aligned_box_grid():
+    box = ip.AxisAlignedBox(half_extents=(1, 1, 1))
+    n = 20
+    points = box.grid(n)
+    assert points.shape == (n**3, 3)
+    assert box.contains(points).all()
