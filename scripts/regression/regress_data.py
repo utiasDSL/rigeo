@@ -15,8 +15,6 @@ import inertial_params as ip
 import IPython
 
 
-# WRENCH_STDEV = 1.0
-
 # these values are taken from the Robotiq FT-300 datasheet
 WRENCH_STDEV = np.array([1.2, 1.2, 0.5, 0.02, 0.02, 0.03])
 
@@ -127,10 +125,6 @@ def main():
         print(f"ell err  = {np.linalg.norm(params.θ - params_ell.θ)}")
         print(f"poly err = {np.linalg.norm(params.θ - params_poly.θ)}")
         print(f"both err = {np.linalg.norm(params.θ - params_both.θ)}")
-        #
-        # if i == 6:
-        #     IPython.embed()
-        #     return
 
 
 main()

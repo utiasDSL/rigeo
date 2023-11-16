@@ -81,11 +81,12 @@ def main():
     np.random.seed(0)
 
     parser = argparse.ArgumentParser()
-    parser.add_argument("outfile", help="File to save the data to.")
+    parser.add_argument("outfile", help="Pickle file to save the data to.")
     parser.add_argument(
         "--type",
         choices=["points", "boxes"],
         help="Type of primitive to generate to make the random bodies.",
+        required=True,
     )
     args = parser.parse_args()
 
