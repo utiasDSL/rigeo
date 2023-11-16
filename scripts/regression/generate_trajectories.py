@@ -16,8 +16,6 @@ import inertial_params as ip
 
 import IPython
 
-# TODO life would be easier if this entered the catkin workspace
-
 FREQ = 10
 DURATION = 10
 NUM_STEPS = DURATION * FREQ
@@ -36,8 +34,8 @@ GRAVITY = np.array([0, 0, -9.81])
 
 # TODO we need to make this more sophisticated
 def in_collision(model, q):
-    elbow_idx = model.get_link_index("ur10_elbow_joint")
-    wrist1_idx = model.get_link_index("ur10_wrist_1_joint")
+    elbow_idx = model.get_link_index("ur10_arm_elbow_joint")
+    wrist1_idx = model.get_link_index("ur10_arm_wrist_1_joint")
     model.forward(q)
 
     for idx in [elbow_idx, wrist1_idx]:
@@ -47,16 +45,20 @@ def in_collision(model, q):
     return False
 
 
-def generate_trajectory(model, q0, timescaling, max_tries=100, step=0.1):
+def generate_arm_trajectory(model, q0_full, timescaling, max_tries=100, step=0.1):
+    q0_base = q0_full[:3]
+    q0_arm = q0_full[3:]
+
     for _ in range(max_tries):
         # random goal in joint space
-        q_goal = 2 * np.pi * (np.random.random(model.nq) - 0.5)
+        q_goal_arm = 2 * np.pi * (np.random.random(6) - 0.5)
+        q_goal_full = np.concatenate((q0_base, q_goal_arm))
 
         # discretize the path
-        delta = q_goal - q0
-        length = np.linalg.norm(delta)
-        n = int(length / step) + 1
-        points = np.outer(np.linspace(0, 1, n), delta) + q0
+        delta_full = q_goal_full - q0_full
+        distance = np.linalg.norm(delta_full)
+        n = int(distance / step) + 1
+        points = np.outer(np.linspace(0, 1, n), delta_full) + q0_full
 
         # check each point for collision
         for point in points:
@@ -64,22 +66,11 @@ def generate_trajectory(model, q0, timescaling, max_tries=100, step=0.1):
                 continue
 
         # if no collisions, build and return the trajectory
-        trajectory = ip.PointToPointTrajectory(
-            q0, delta=delta, timescaling=timescaling
-        )
-        return qd, trajectory
+        delta_arm = q_goal_arm - q0_arm
+        trajectory = ip.PointToPointTrajectory(q0_arm, delta=delta_arm, timescaling=timescaling)
+        return q_goal_arm, trajectory
 
     raise Exception("Failed to generate collision free point!")
-
-
-def make_urdf_file():
-    rospack = rospkg.RosPack()
-    path = Path(rospack.get_path("inertial_params")) / "urdf/thing_pyb.urdf"
-    includes = [
-        "$(find mobile_manipulation_central)/urdf/xacro/thing_pyb.urdf.xacro",
-    ]
-    mm.XacroDoc.from_includes(includes).to_urdf_file(path)
-    return path.as_posix()
 
 
 def main():
@@ -91,7 +82,6 @@ def main():
     args = parser.parse_args()
 
     model = mm.MobileManipulatorKinematics(tool_link_name="gripper")
-    urdf_path = make_urdf_file()
 
     pyb.connect(pyb.GUI)
     pyb.setTimeStep(1.0 / SIM_FREQ)
@@ -99,43 +89,57 @@ def main():
     pyb.setAdditionalSearchPath(pybullet_data.getDataPath())
     ground_id = pyb.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
 
-    robot_id = pyb.loadURDF(
-        urdf_path,
-        [0, 0, 0],
-        useFixedBase=True,
+    xacro_doc = mm.XacroDoc.from_package_file(
+        package_name="mobile_manipulation_central",
+        relative_path="urdf/xacro/thing_pyb.urdf.xacro",
     )
-    robot = pyb_utils.Robot(robot_id, tool_joint_name="tool_gripper_joint")
+    with xacro_doc.temp_urdf_file_path() as urdf_path:
+        robot_id = pyb.loadURDF(
+            urdf_path,
+            [0, 0, 0],
+            useFixedBase=True,
+        )
+    robot = pyb_utils.Robot(robot_id, tool_link_name="gripper")
 
-    q0 = np.array([0, 0, 0, 0, -np.pi / 2, 0, 0, 0, 0])
-    robot.reset_joint_configuration(q0)
+    q0_full = np.array([0, 0, 0, 0, -np.pi / 2, 0, 0, 0, 0])
+    robot.reset_joint_configuration(q0_full)
+    model.forward(q0_full)
 
-    model.forward(q0)
+    # TODO we need to rigidly attach to the EE
     r_ew_w, C_we = model.link_pose(rotation_matrix=True)
     r_ow_w = r_ew_w + C_we @ OFFSET
     pyb_utils.BulletBody.box(r_ow_w, half_extents=[BOUNDING_BOX_HALF_EXTENT] * 3)
 
-    # NOTE: we need to deal with the offset between these two!
-    r_pyb, C_pyb = robot.get_link_frame_pose(as_rotation_matrix=True)
+    # check that models are aligned
+    # r_pyb, C_pyb = robot.get_link_frame_pose(as_rotation_matrix=True)
+    # assert np.allclose(r_pyb, r_ew_w)
+    # assert np.allclose(C_pyb, C_we)
 
-    IPython.embed()
-    return
-
+    q0_arm = q0_full[3:]
+    assert q0_arm.shape == (6,)
     timescaling = ip.QuinticTimeScaling(duration=DURATION / NUM_TRAJ)
     traj_idx = 0
-    qd, trajectory = generate_trajectory(model, q0, timescaling)
-    qds = [qd]
+    q_goal, trajectory = generate_arm_trajectory(model, q0_full, timescaling)
+    q_goals = [q_goal]
 
-    t = 0
     dt = 1.0 / SIM_FREQ
-    Kp = np.eye(robot.num_joints)
+    Kp = np.eye(6)
+    q_arm = q0_arm
+    t = 0
     while t < DURATION:
         if trajectory.done(t):
             traj_idx += 1
-            qd, trajectory = generate_trajectory(model, q, timescaling)
-            qds.append(qd)
-        qd, vd, _ = trajectory.sample(t)
+            q_goal, trajectory = generate_arm_trajectory(model, q_arm, timescaling)
+            q_goals.append(q_goal)
+
         q, v = robot.get_joint_states()
-        u = Kp @ (qd - q) + vd
+        q_arm = q[3:]
+        v_arm = v[3:]
+
+        qd_arm, vd_arm, _ = trajectory.sample(t)
+        u_arm = Kp @ (qd_arm - q_arm) + vd_arm
+        u = np.concatenate((np.zeros(3), u_arm))
+
         robot.command_velocity(u)
         pyb.stepSimulation()
         time.sleep(dt)

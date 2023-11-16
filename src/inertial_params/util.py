@@ -1,6 +1,8 @@
 from pathlib import Path
 import numpy as np
 
+from mobile_manipulation_central import ros_utils
+
 
 def vech(J):
     """Half-vectorize the inertia matrix"""
@@ -51,4 +53,4 @@ def get_urdf_path():
     : pathlib.Path
         The path to the directory containing extra pyb_utils URDFs.
     """
-    return (Path(__file__).parent.parent / "urdf").resolve()
+    return Path(ros_utils.package_file_path("inertial_params", "urdf"))

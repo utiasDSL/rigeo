@@ -36,6 +36,13 @@ def test_allclose_unordered():
     C[0, 0] = 0
     assert not allclose_unordered(A, C)
 
+    # test with repeated row
+    D = np.copy(A)
+    D[1, :] = D[0, :]
+    assert not allclose_unordered(A, D)
+    assert not allclose_unordered(D, A)
+    assert allclose_unordered(D, D)
+
 
 def test_conv_hull_cube():
     half_extents = 0.5 * np.ones(3)

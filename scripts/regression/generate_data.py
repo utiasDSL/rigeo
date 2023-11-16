@@ -9,6 +9,7 @@ import pybullet_data
 import pinocchio
 import cvxpy as cp
 
+from mobile_manipulation_central.kinematics import RobotKinematics
 import inertial_params as ip
 
 import IPython
@@ -59,7 +60,7 @@ def simulate_trajectories(q0, qds, timescaling, model, params):
 
         # task space
         model.forward(q, v, a)
-        C_we = model.link_pose()[1]
+        C_we = model.link_pose(rotation_matrix=True)[1]
         V = np.concatenate(model.link_velocity(frame="local"))
         A = np.concatenate(model.link_classical_acceleration(frame="local"))
 
@@ -89,7 +90,7 @@ def main():
     args = parser.parse_args()
 
     urdf_path = (ip.get_urdf_path() / "ur10.urdf").as_posix()
-    model = ip.RobotKinematics.from_urdf_file(urdf_path, tool_link_name="ur10_tool0")
+    model = RobotKinematics.from_urdf_file(urdf_path, tool_link_name="ur10_tool0")
 
     # urdf_path = Path(pybullet_data.getDataPath()) / "kuka_iiwa/model.urdf"
     # model = ip.RobotKinematics.from_urdf_file(
