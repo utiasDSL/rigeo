@@ -41,8 +41,10 @@ def point_mass_system_inertia(masses, points):
         H += m * np.outer(p, p)
     return H, H2I(H)
 
+
 def point_mass_system_h(masses, points):
     return np.sum(masses[:, None] * points, axis=0)
+
 
 def point_mass_system_com(masses, points):
     """Center of mass of a finite set of point masses."""
@@ -78,30 +80,47 @@ class RigidBody:
         3x3 inertia matrix about w.r.t. O
     """
 
-    def __init__(self, mass, h, H, tol=1e-8):
+    def __init__(self, mass, h, H, tol=1e-7):
         self.mass = mass
         self.h = h
         self.H = H
 
         assert mass >= -tol, f"Mass must be non-negative but is {mass}."
 
-        min_H_λ = np.min(np.linalg.eigvals(self.H))
-        assert min_H_λ >= -tol, f"H must be p.s.d. but min eigenval is {min_H_λ}"
+        min_Hc_λ = np.min(np.linalg.eigvals(self.Hc))
+        assert min_Hc_λ >= -tol, f"Hc must be p.s.d. but min eigenval is {min_H_λ}"
+
+    def __repr__(self):
+        return f"RigidBody(mass={self.mass}, h={self.h}, H={self.H})"
 
     @property
     def com(self):
+        """Center of mass."""
         return self.h / self.mass
 
     @property
     def θ(self):
+        """Inertial parameter vector."""
         return np.concatenate([[self.mass], self.h, util.vech(self.I)])
 
     @property
     def I(self):
+        """Inertia matrix."""
         return H2I(self.H)
 
     @property
+    def Hc(self):
+        """H matrix about the CoM."""
+        return self.H - np.outer(self.h, self.h) / self.mass
+
+    @property
+    def Ic(self):
+        """Inertia matrix about the CoM."""
+        return H2I(self.Hc)
+
+    @property
     def J(self):
+        """Pseudo-inertia matrix."""
         J = np.zeros((4, 4))
         J[:3, :3] = self.H
         J[:3, 3] = self.h
@@ -111,11 +130,14 @@ class RigidBody:
 
     @property
     def M(self):
+        """Spatial mass matrix."""
         S = util.skew3(self.h)
         return np.block([[self.mass * np.eye(3), -S], [S, self.I]])
 
     @classmethod
     def from_vector(cls, θ):
+        """Construct from a parameter vector."""
+        assert θ.shape == (10,)
         mass = θ[0]
         h = θ[1:4]
         # fmt: off
@@ -129,6 +151,8 @@ class RigidBody:
 
     @classmethod
     def from_pseudo_inertia_matrix(cls, J):
+        """Construct from a pseudo-inertia matrix."""
+        assert J.shape == (4, 4)
         H = J[:3, :3]
         h = J[3, :3]
         mass = J[3, 3]
@@ -136,6 +160,8 @@ class RigidBody:
 
     @classmethod
     def from_point_masses(cls, masses, points):
+        """Construct from a system of point masses."""
+        assert masses.shape[0] == points.shape[0]
         mass = sum(masses)
         h = point_mass_system_h(masses, points)
         H = point_mass_system_inertia(masses, points)[0]
@@ -143,11 +169,22 @@ class RigidBody:
 
     @classmethod
     def translate_from_com(cls, mass, h, Hc):
+        """Construct from mass, h, and H matrix about the CoM.
+
+        The H matrix is adjusted to be about the reference point defined by h.
+        """
+        assert mass > 0
+        assert h.shape == (3,)
+        assert Hc.shape == (3, 3)
         H = Hc + np.outer(h, h) / mass
         return cls(mass=mass, h=h, H=H)
 
     @classmethod
     def from_mcI(cls, mass, com, I):
+        """Construct from mass, center of mass, and inertia matrix."""
+        assert mass > 0
+        assert com.shape == (3,)
+        assert I.shape == (3, 3)
         h = com / mass
         H = I2H(I)
         return cls(mass=mass, h=h, H=H)

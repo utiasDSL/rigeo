@@ -22,9 +22,9 @@ TIMESTEP = 1.0 / FREQ
 
 NUM_OBJ = 10
 NUM_TRAJ = 2
-NUM_PRIMITIVES = 10
-BOUNDING_BOX_HALF_EXTENT = 0.1
-OFFSET = np.array([0, 0, 0.2])
+NUM_PRIMITIVES = 100
+BOUNDING_BOX_HALF_EXTENT = 0.5
+OFFSET = np.array([0.2, 0, 0])
 MASS = 1.0
 GRAVITY = np.array([0, 0, -9.81])
 
@@ -41,6 +41,11 @@ def simulate_trajectories(q0, qds, timescaling, model, params):
     As = []
     ws = []
     Ys = []
+
+    Vs_noisy = []
+    As_noisy = []
+    ws_noisy = []
+    Ys_noisy = []
 
     # generate the data
     for i in range(NUM_STEPS):
@@ -62,14 +67,44 @@ def simulate_trajectories(q0, qds, timescaling, model, params):
 
         # account for gravity
         G = np.concatenate((C_we.T @ GRAVITY, np.zeros(3)))
-        A = A - G
+        # G = np.zeros(6)
+        A -= G
         w = params.body_wrench(V, A)
 
         Vs.append(V)
         As.append(A)
         ws.append(w)
         Ys.append(ip.body_regressor(V, A))
-    return {"Vs": Vs, "As": As, "ws": ws, "Ys": Ys}
+
+        # noisy version
+        q_noisy = q + np.random.normal(scale=0.01, size=q.shape)
+        v_noisy = v + np.random.normal(scale=0.01 / TIMESTEP, size=q.shape)
+        a_noisy = a + np.random.normal(scale=0.01 / TIMESTEP**2, size=q.shape)
+
+        model.forward(q_noisy, v_noisy, a_noisy)
+        C_we_noisy = model.link_pose(rotation_matrix=True)[1]
+        V_noisy = np.concatenate(model.link_velocity(frame="local"))
+        A_noisy = np.concatenate(model.link_classical_acceleration(frame="local"))
+
+        G_noisy = np.concatenate((C_we_noisy.T @ GRAVITY, np.zeros(3)))
+        A_noisy -= G_noisy
+        w_noisy = params.body_wrench(V_noisy, A_noisy)
+
+        Vs_noisy.append(V_noisy)
+        As_noisy.append(A_noisy)
+        ws_noisy.append(w_noisy)
+        Ys_noisy.append(ip.body_regressor(V_noisy, A_noisy))
+
+    return {
+        "Vs": Vs,
+        "As": As,
+        "ws": ws,
+        "Ys": Ys,
+        "Vs_noisy": Vs_noisy,
+        "As_noisy": As_noisy,
+        "ws_noisy": ws_noisy,
+        "Ys_noisy": Ys_noisy,
+    }
 
 
 def main():
@@ -111,15 +146,11 @@ def main():
         masses = np.random.random(NUM_PRIMITIVES)
         masses = masses / sum(masses) * MASS
 
-        # generate random point masses in a box of half length r centered at
-        # `offset` from the EE
         if args.type == "points":
+            # random point mass system contained in the bounding box
             points = bounding_box.random_points(NUM_PRIMITIVES)
-            if NUM_PRIMITIVES > 3:
-                # convex hull computation only works in non-degenerate cases
-                vertices = ip.convex_hull(points)
-            else:
-                vertices = points
+            points = np.atleast_2d(points)
+            vertices = ip.convex_hull(points)
             params = ip.RigidBody.from_point_masses(masses=masses, points=points)
         elif args.type == "boxes":
             # generate random boxes inside a larger one by defining each box

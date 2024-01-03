@@ -6,6 +6,41 @@ from scipy.linalg import sqrtm, orth
 from scipy.spatial import ConvexHull
 
 
+# TODO
+class ConvexPolyhedron:
+    def __init__(self, vertices):
+        self.vertices = vertices
+        self.A, self.b = polyhedron_span_to_face_form(vertices)
+
+    def __repr__(self):
+        return f"ConvexPolyhedron(vertices={self.vertices})"
+
+    @classmethod
+    def from_convex_hull_of(cls, points):
+        vertices = convex_hull(points)
+        return cls(vertices)
+
+    def contains(self, points, tol=1e-8):
+        points = np.atleast_2d(points)
+        c = self.A @ points.T <= np.tile(self.b, (points.shape[0], 1)).T + tol
+        return np.array(np.product(c, axis=0), dtype=bool)
+
+    def random_points(self, shape=1):
+        # TODO test this...
+        box = self.aabb()
+        candidates = box.random_points(shape)
+        contains = self.contains(candidates)
+        n = np.product(shape)
+        while np.sum(contains) < n:
+            mask = np.logical_not(contains)
+            candidates[mask] = box.random_points(shape=candidates[mask].shape[:-1])
+            contains = self.contains(candidates)
+        return candidates
+
+    def aabb(self):
+        return AxisAlignedBox.from_points_to_bound(self.vertices)
+
+
 def convex_hull(points, rcond=None):
     """Get the vertices of the convex hull of a set of points.
 
@@ -22,6 +57,10 @@ def convex_hull(points, rcond=None):
         The :math:`m\\times d` array of vertices of the convex hull that fully
         contains the set of points.
     """
+    assert points.ndim == 2
+    if points.shape[0] <= 1:
+        return points
+
     # rowspace
     R = orth(points.T, rcond=rcond)
 
@@ -57,6 +96,23 @@ def polyhedron_span_to_face_form(vertices):
 
 
 def polyhedron_grid(vertices, n):
+    """Generate a regular grid inside a convex polyhedron.
+
+    The approach is to compute the axis-aligned bounding box, generate a grid
+    for that, and then discard any points not inside the actual polyhedron.
+
+    Parameters
+    ----------
+    vertices :
+        The vertices of the polyhedron.
+    n :
+        The maximum number of points along each dimension.
+
+    Returns
+    -------
+    :
+        An array of shape ``(N, 3)`` representing the ``N`` points in the grid.
+    """
     bounding_box = AxisAlignedBox.from_points_to_bound(vertices)
     box_grid = bounding_box.grid(n)
     A, b = polyhedron_span_to_face_form(vertices)
@@ -356,3 +412,25 @@ def maximum_inscribed_ellipsoid(vertices, rcond=None):
     Einv = R @ ell.Einv @ R.T
     c = R @ ell.c
     return Ellipsoid(Einv=Einv, c=c)
+
+
+def positive_definite_distance(A, B):
+    """Geodesic distance between two positive definite matrices A and B.
+
+    This metric is coordinate-frame invariant. See (Lee and Park, 2018) for
+    more details.
+
+    Parameters
+    ----------
+    A : np.ndarray
+    B : np.ndarray
+
+    Returns
+    -------
+    : float
+        The non-negative geodesic between A and B.
+    """
+    C = np.linalg.solve(A, B)
+    eigs = np.linalg.eigvals(C)
+    # TODO: (Lee, Wensing, and Park, 2019) includes the factor of 0.5
+    return np.sqrt(0.5 * np.sum(np.log(eigs) ** 2))

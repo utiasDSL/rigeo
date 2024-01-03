@@ -1,5 +1,6 @@
 from pathlib import Path
 import numpy as np
+import cvxpy as cp
 
 from mobile_manipulation_central import ros_utils
 
@@ -54,3 +55,20 @@ def get_urdf_path():
         The path to the directory containing extra pyb_utils URDFs.
     """
     return Path(ros_utils.package_file_path("inertial_params", "urdf"))
+
+
+def schur(X, x, m):
+    """Construct the matrix [[X, x], [x.T, m]].
+
+    Parameters can be either cvxpy variables are numpy arrays.
+    """
+    # cvxpy variables
+    if type(X) == cp.Variable:
+        y = cp.reshape(x, (x.shape[0], 1))
+        z = cp.reshape(m, (1, 1))
+        return cp.bmat([[X, y], [y.T, z]])
+
+    # otherwise assume numpy
+    y = np.reshape(x, (x.shape[0], 1))
+    z = np.reshape(m, (1, 1))
+    return np.block([[X, y], [y.T, z]])
