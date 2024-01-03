@@ -251,10 +251,35 @@ class Ellipsoid:
         self.dim = c.shape[0]
         self.rank = np.linalg.matrix_rank(Einv)
 
+    def __repr__(self):
+        return f"Ellipsoid(center={self.c}, Einv={self.Einv})"
+
     @classmethod
-    def sphere(cls, radius, dim=3):
+    def sphere(cls, radius, center=None, dim=None):
+        """Construct a sphere.
+
+        Parameters
+        ----------
+        radius : float
+            Radius of the sphere.
+        center : iterable
+            Optional center point of the sphere.
+        dim : int
+            Dimension of the sphere. Only required if ``center`` not provided,
+            in which case the sphere is centered at the origin. If neither
+            ``center`` or ``dim`` is provided, defaults to a 3D sphere at the
+            origin.
+        """
+        if center is None:
+            if dim is None:
+                dim = 3
+            center = np.zeros(dim)
+        else:
+            center = np.array(center)
+        assert center.shape == (dim,)
+
         Einv = np.eye(dim) / radius**2
-        return cls(Einv=Einv, c=np.zeros(dim))
+        return cls(Einv=Einv, c=center)
 
     @classmethod
     def from_Ab(cls, A, b, rcond=None):
@@ -274,16 +299,38 @@ class Ellipsoid:
         c = np.linalg.solve(Einv, q)
         return cls(Einv=Einv, c=c)
 
+    def axes(self):
+        """Compute axes directions and semi-axes values."""
+        e, V = np.linalg.eig(self.Einv)
+        r = 1 / np.sqrt(e)
+        return r, V
+
     @property
     def A(self):
+        """``A`` from ``(A, b)`` representation of the ellipsoid.
+
+        .. math::
+           \mathcal{E} = \\{x\\in\\mathbb{R}^d \mid \\|Ax+b\\|^2\\leq 1\\}
+        """
         return sqrtm(self.Einv)
 
     @property
     def b(self):
+        """``b`` from ``(A, b)`` representation of the ellipsoid.
+
+        .. math::
+           \mathcal{E} = \\{x\\in\\mathbb{R}^d \mid \\|Ax+b\\|^2\\leq 1\\}
+        """
         return -self.A @ self.c
 
     @property
     def Q(self):
+        """Q representation of the ellipsoid.
+
+        .. math::
+           \mathcal{E} = \\{x\\in\\mathbb{R}^d \mid \\tilde{x}^TQ\\tilde{q}\\geq 0\\}
+        """
+
         Q = np.zeros((self.dim + 1, self.dim + 1))
         Q[: self.dim, : self.dim] = -self.Einv
         Q[: self.dim, self.dim] = self.Einv @ self.c
@@ -292,14 +339,60 @@ class Ellipsoid:
         return Q
 
     def degenerate(self):
+        """Check if the ellipsoid is degenerate.
+
+        This means that it has zero volume, and lives in a lower dimension than
+        the ambient one.
+
+        Returns
+        -------
+        : bool
+            Returns ``True`` if the ellipsoid is degenerate, ``False`` otherwise.
+        """
         return self.rank < self.dim
 
-    def contains(self, x):
-        """Return True if x is inside the ellipsoid, False otherwise."""
-        p = x - self.c
-        return p @ self.Einv @ p <= 1
+    def contains(self, points):
+        """Check if points are contained in the ellipsoid.
+
+        Parameters
+        ----------
+        points : iterable
+            Points to check. May be a single point or a list or array of points.
+
+        Returns
+        -------
+        :
+            Given a single point, return ``True`` if the point is contained in
+            the ellipsoid, or ``False`` if not. For multiple points, return a
+            boolean array with one value per point.
+        """
+        points = np.array(points)
+        if points.ndim == 1:
+            p = points - self.c
+            return p @ self.Einv @ p <= 1
+        elif points.ndim == 2:
+            ps = points - self.c
+            return np.array([p @ self.Einv @ p <= 1 for p in ps])
+        else:
+            raise ValueError(
+                f"points must have 1 or 2 dimensions, but has {points.ndim}."
+            )
 
     def transform(self, C=None, r=None):
+        """Apply an affine transform to the ellipsoid.
+
+        Parameters
+        ----------
+        C :
+            Rotation matrix.
+        r :
+            Translation vector.
+
+        Returns
+        -------
+        : Ellipsoid
+            A new ellipsoid that is an affine transform of this one.
+        """
         if C is None and r is None:
             return Ellipsoid(Einv=self.Einv.copy(), c=self.c.copy())
 
@@ -432,5 +525,5 @@ def positive_definite_distance(A, B):
     """
     C = np.linalg.solve(A, B)
     eigs = np.linalg.eigvals(C)
-    # TODO: (Lee, Wensing, and Park, 2019) includes the factor of 0.5
+    # TODO: (Lee, Wensing, and Park, 2020) includes the factor of 0.5
     return np.sqrt(0.5 * np.sum(np.log(eigs) ** 2))
