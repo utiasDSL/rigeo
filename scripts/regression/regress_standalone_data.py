@@ -18,7 +18,7 @@ import IPython
 # these values are taken from the Robotiq FT-300 datasheet
 # WRENCH_STDEV = np.array([1.2, 1.2, 0.5, 0.02, 0.02, 0.03])
 
-DISC_GRID_SIZE = 5
+DISC_GRID_SIZE = 2
 TRAIN_TEST_SPLIT = 0.5
 TRAIN_WITH_NOISY_Y = True
 TRAIN_WITH_NOISY_W = True
@@ -32,7 +32,7 @@ def J_vec_constraint(J, θ, eps=1e-4):
     H = J[:3, :3]
     I = cp.trace(H) * np.eye(3) - H
     return [
-        J >> eps,
+        J >> eps * np.eye(4),
         J[3, 3] == θ[0],
         J[:3, 3] == θ[1:4],
         I[0, :3] == θ[4:7],
@@ -97,10 +97,12 @@ class IPIDProblem:
 
         problem = cp.Problem(objective, constraints)
         problem.solve(solver=cp.MOSEK)
+        assert problem.status == "optimal"
         # if name is not None:
         #     # print(f"{name} solve time = {problem.solver_stats.solve_time}")
         #     print(f"{name} value = {problem.value}")
         return ip.RigidBody.from_vector(self.θ.value)
+        # return ip.RigidBody.from_pseudo_inertia_matrix(self.Jopt.value)
 
     def solve_nominal(self):
         return self._solve()
@@ -298,6 +300,9 @@ def main():
         riemannian_errors.print(index=i)
         print()
         validation_errors.print(index=i)
+
+        if i == 9:
+            IPython.embed()
 
     print(f"\nAverages")
     print("========")

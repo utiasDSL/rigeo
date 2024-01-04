@@ -116,7 +116,7 @@ def compute_eval_times(duration, step=0.1):
     return n, times
 
 
-def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1):
+def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False):
     M = params.M
 
     def wrench(t):
@@ -124,9 +124,9 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1):
             [
                 np.sin(t),
                 np.sin(t + np.pi / 3),
-                np.sin(t + 2 * np.pi / 3),
-                np.sin(t + np.pi),
-                np.sin(t + 4 * np.pi / 3),
+                np.sin(t + 2 * np.pi / 3) if not planar else 0,
+                np.sin(t + np.pi) if not planar else 0,
+                np.sin(t + 4 * np.pi / 3) if not planar else 0,
                 np.sin(t + 5 * np.pi / 3),
             ]
         )
@@ -148,9 +148,13 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1):
 
     # apply noise to velocity
     vel_noise_raw = np.random.random(size=velocities.shape) - 0.5  # mean = 0, width = 1
-    width = 0.5
+    width = 0.05
     bias = 0.1
+    # width = 0.05
+    # bias = 0.1
     vel_noise = width * vel_noise_raw + bias
+    if planar:
+        vel_noise[:, 2:5] = 0
     velocities_noisy = velocities + vel_noise
 
     # compute midpoint values
@@ -161,7 +165,7 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1):
 
     # apply noise to wrench
     wrench_noise_raw = np.random.random(size=wrenches.shape) - 0.5
-    wrench_noise = 0.5 * wrench_noise_raw + 0
+    wrench_noise = 0 * wrench_noise_raw + 0
     wrenches_noisy = wrenches + wrench_noise
 
     return {
@@ -187,6 +191,12 @@ def main():
         choices=["points", "boxes"],
         help="Type of primitive to generate to make the random bodies.",
         required=True,
+    )
+    parser.add_argument(
+        "--planar",
+        action="store_true",
+        help="Only use a trajectory in the x-y plane.",
+        required=False,
     )
     args = parser.parse_args()
 
@@ -231,9 +241,7 @@ def main():
         assert np.isclose(params.mass, MASS)
         assert bounding_box.contains(params.com)
 
-        # TODO
-        # obj_datum = simulate_trajectories(q0, qds, timescaling, model, params)
-        obj_datum = generate_trajectory(params)
+        obj_datum = generate_trajectory(params, planar=args.planar)
 
         obj_data.append(obj_datum)
         param_data.append(params)
