@@ -23,8 +23,8 @@ BOUNDING_BOX_HALF_EXTENTS = [0.5, 0.5, 0.5]
 OFFSET = np.array([0, 0, 0])
 MASS = 1.0  # TODO vary as well?
 
-VEL_NOISE_WIDTH = 0.0
-VEL_NOISE_BIAS = 0.5
+VEL_NOISE_WIDTH = 0.1
+VEL_NOISE_BIAS = 0
 
 
 def compute_eval_times(duration, step=0.1):
@@ -175,7 +175,7 @@ def main():
             points = bounding_box.random_points(num_primitives)
             points = np.atleast_2d(points)
             vertices = ip.convex_hull(points)
-            params = ip.RigidBody.from_point_masses(masses=masses, points=points)
+            params = ip.InertialParameters.from_point_masses(masses=masses, points=points)
         elif args.type == "boxes":
             # generate random boxes inside a larger one by defining each box
             # using two vertices
@@ -191,7 +191,7 @@ def main():
                 all_vertices.append(box.vertices)
                 Ic = ip.cuboid_inertia_matrix(masses[j], box.half_extents)
                 Hc = ip.I2H(Ic)
-                params = ip.RigidBody.translate_from_com(
+                params = ip.InertialParameters.translate_from_com(
                     mass=masses[j], h=masses[j] * box.center, Hc=Hc
                 )
                 all_params.append(params)

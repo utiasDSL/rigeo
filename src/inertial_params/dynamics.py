@@ -67,7 +67,7 @@ def body_regressor(V, A):
     return util.lift6(A) + util.skew6(V) @ util.lift6(V)
 
 
-class RigidBody:
+class InertialParameters:
     """Inertial parameters of a rigid body.
 
     Parameters
@@ -91,7 +91,7 @@ class RigidBody:
         assert min_Hc_λ >= -tol, f"Hc must be p.s.d. but min eigenval is {min_H_λ}"
 
     def __repr__(self):
-        return f"RigidBody(mass={self.mass}, h={self.h}, H={self.H})"
+        return f"InertialParameters(mass={self.mass}, h={self.h}, H={self.H})"
 
     @property
     def com(self):
@@ -190,7 +190,7 @@ class RigidBody:
         return cls(mass=mass, h=h, H=H)
 
     def __add__(self, other):
-        return RigidBody(
+        return InertialParameters(
             mass=self.mass + other.mass, h=self.h + other.h, H=self.H + other.H
         )
 

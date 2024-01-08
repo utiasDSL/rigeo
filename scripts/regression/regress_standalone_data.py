@@ -25,14 +25,16 @@ DISC_GRID_SIZE = 2
 TRAIN_TEST_SPLIT = 0.2
 
 # train only with data in the x-y plane
-TRAIN_WITH_PLANAR_ONLY = False
+TRAIN_WITH_PLANAR_ONLY = True
 
 # use the overall bounding box rather than tight convex hull of the body's
 # shape
 USE_BOUNDING_BOX = True
 
+REGULARIZATION_COEFF = 1e-2
 
-def J_vec_constraint(J, θ, eps=1e-2):
+
+def J_vec_constraint(J, θ, eps=1e-4):
     """Constraint to enforce consistency between J and θ representations."""
     H = J[:3, :3]
     I = cp.trace(H) * np.eye(3) - H
@@ -44,12 +46,6 @@ def J_vec_constraint(J, θ, eps=1e-2):
         I[1, 1:3] == θ[7:9],
         I[2, 2] == θ[9],
     ]
-
-
-def schur(X, x, m):
-    y = cp.reshape(x, (x.shape[0], 1))
-    z = cp.reshape(m, (1, 1))
-    return cp.bmat([[X, y], [y.T, z]])
 
 
 class DiscretizedIPIDProblem:
@@ -87,7 +83,7 @@ class DiscretizedIPIDProblem:
         problem.solve(solver=cp.MOSEK)
         # print(f"disc solve time = {problem.solver_stats.solve_time}")
         # print(f"disc value = {problem.value}")
-        return ip.RigidBody.from_vector(self.θ.value)
+        return ip.InertialParameters.from_vector(self.θ.value)
 
 
 class IPIDProblem:
@@ -101,7 +97,7 @@ class IPIDProblem:
         Measured wrenches.
     cov : ndarray, shape (6, 6)
         Covariance matrix for the measurement noise.
-    reg_params : RigidBody
+    reg_params : InertialParameters
         Nominal inertial parameters to use as a regularizer.
     reg_coeff : float
         Coefficient for the regularization term.
@@ -138,8 +134,8 @@ class IPIDProblem:
         if name is not None:
             print(f"{name} solve time = {problem.solver_stats.solve_time}")
         #     print(f"{name} value = {problem.value}")
-        return ip.RigidBody.from_vector(self.θ.value)
-        # return ip.RigidBody.from_pseudo_inertia_matrix(self.Jopt.value)
+        return ip.InertialParameters.from_vector(self.θ.value)
+        # return ip.InertialParameters.from_pseudo_inertia_matrix(self.Jopt.value)
 
     def solve_nominal(self):
         return self._solve()
@@ -307,16 +303,24 @@ def main():
         )[:n_train]
         ws_train_noiseless = ws[:n_train]
         prob_noiseless = IPIDProblem(
-            Ys_train_noiseless, ws_train_noiseless, np.eye(6), reg_params=params
+            Ys_train_noiseless,
+            ws_train_noiseless,
+            np.eye(6),
+            reg_params=params,
+            reg_coeff=REGULARIZATION_COEFF,
         )
         try:
             params_noiseless = prob_noiseless.solve_nominal()
         except:
             print("failed to solve noiseless problem")
-            params_noiseless = ip.RigidBody.from_pseudo_inertia_matrix(params.J)
+            params_noiseless = ip.InertialParameters.from_pseudo_inertia_matrix(
+                params.J
+            )
 
         # solve noisy problem with varying constraints
-        prob = IPIDProblem(Ys_train, ws_train, cov, reg_params=params)
+        prob = IPIDProblem(
+            Ys_train, ws_train, cov, reg_params=params, reg_coeff=REGULARIZATION_COEFF
+        )
         params_nom = prob.solve_nominal()
         params_poly = prob.solve_polyhedron(vertices)
         params_ell = prob.solve_ellipsoid(ellipsoid)
@@ -325,9 +329,9 @@ def main():
         # regularize with equal point masses
         # TODO this probably doesn't really make sense
         reg_masses = params.mass * np.ones(grid.shape[0]) / grid.shape[0]
-        params_grid = DiscretizedIPIDProblem(Ys_train, ws_train, cov, reg_masses).solve(
-            grid
-        )
+        params_grid = DiscretizedIPIDProblem(
+            Ys_train, ws_train, cov, reg_masses, reg_coeff=REGULARIZATION_COEFF
+        ).solve(grid)
 
         θ_errors.no_noise.append(np.linalg.norm(params.θ - params_noiseless.θ))
         θ_errors.nominal.append(np.linalg.norm(params.θ - params_nom.θ))

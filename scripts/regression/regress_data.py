@@ -37,12 +37,6 @@ def J_vec_constraint(J, θ):
     ]
 
 
-def schur(X, x, m):
-    y = cp.reshape(x, (x.shape[0], 1))
-    z = cp.reshape(m, (1, 1))
-    return cp.bmat([[X, y], [y.T, z]])
-
-
 class DiscretizedIPIDProblem:
     def __init__(self, Ys, ws, ws_noise, cov):
         self.A = np.vstack(Ys)
@@ -195,7 +189,7 @@ class IPIDProblem:
             self.θ[0] >= 0,
             A @ self.θ[1:4] <= self.θ[0] * b,
             Hc == H - Hbar,
-            schur(Hbar, self.θ[1:4], self.θ[0]) >> 0,
+            ip.schur(Hbar, self.θ[1:4], self.θ[0]) >> 0,
             H << cp.sum([m * V for m, V in zip(mvs, Vs)]),
         ] + [
             cp.trace(Hc @ np.outer(a, a)) <= bi**2 * self.θ[0] for a, bi in zip(A, b)
