@@ -9,6 +9,7 @@ import numpy as np
 import pybullet_data
 import pinocchio
 import cvxpy as cp
+from scipy.linalg import block_diag
 
 import inertial_params as ip
 
@@ -21,17 +22,17 @@ import IPython
 DISC_GRID_SIZE = 2
 
 # fraction of data to be used for training (vs. testing)
-TRAIN_TEST_SPLIT = 0.5
+TRAIN_TEST_SPLIT = 0.2
 
 # train only with data in the x-y plane
-TRAIN_WITH_PLANAR_ONLY = True
+TRAIN_WITH_PLANAR_ONLY = False
 
 # use the overall bounding box rather than tight convex hull of the body's
 # shape
 USE_BOUNDING_BOX = True
 
 
-def J_vec_constraint(J, θ, eps=1e-4):
+def J_vec_constraint(J, θ, eps=1e-2):
     """Constraint to enforce consistency between J and θ representations."""
     H = J[:3, :3]
     I = cp.trace(H) * np.eye(3) - H
@@ -134,8 +135,8 @@ class IPIDProblem:
         problem = cp.Problem(objective, constraints)
         problem.solve(solver=cp.MOSEK)
         assert problem.status == "optimal"
-        # if name is not None:
-        #     # print(f"{name} solve time = {problem.solver_stats.solve_time}")
+        if name is not None:
+            print(f"{name} solve time = {problem.solver_stats.solve_time}")
         #     print(f"{name} value = {problem.value}")
         return ip.RigidBody.from_vector(self.θ.value)
         # return ip.RigidBody.from_pseudo_inertia_matrix(self.Jopt.value)
@@ -145,7 +146,7 @@ class IPIDProblem:
 
     def solve_ellipsoid(self, ellipsoid):
         extra_constraints = [cp.trace(ellipsoid.Q @ self.Jopt) >= 0]
-        return self._solve(extra_constraints)
+        return self._solve(extra_constraints, name="ellipsoid")
 
     def solve_polyhedron(self, vertices):
         nv = vertices.shape[0]
@@ -216,6 +217,10 @@ class ErrorSet:
         print(f"polyhedron = {np.mean(self.polyhedron)}")
         print(f"discrete   = {np.mean(self.discrete)}")
 
+    # def save(self, filename):
+    #     with open(filename, "w") as f:
+    #         pass
+
 
 def main():
     np.set_printoptions(suppress=True, precision=6)
@@ -265,9 +270,25 @@ def main():
         cov = np.eye(6)  # TODO?
 
         if TRAIN_WITH_PLANAR_ONLY:
-            Vs_train[:, 2:5] = 0
-            As_train[:, 2:5] = 0
-            ws_train[:, 2:5] = 0
+            C_wbs = np.array(data["obj_data"][i]["C_wbs"])
+            for j in range(n_train):
+                C_wb = C_wbs[j]
+                X_wb = block_diag(C_wb, C_wb)
+                V_w = X_wb @ Vs_train[j]
+                A_w = X_wb @ As_train[j]
+                w_w = X_wb @ ws_train[j]
+
+                V_w[2:5] = 0
+                A_w[2:5] = 0
+                w_w[2:5] = 0
+
+                Vs_train[j] = X_wb.T @ V_w
+                As_train[j] = X_wb.T @ A_w
+                ws_train[j] = X_wb.T @ w_w
+
+            # Vs_train[:, 2:5] = 0
+            # As_train[:, 2:5] = 0
+            # ws_train[:, 2:5] = 0
 
         Ys_train = np.array(
             [ip.body_regressor(V, A) for V, A in zip(Vs_train, As_train)]
@@ -288,7 +309,11 @@ def main():
         prob_noiseless = IPIDProblem(
             Ys_train_noiseless, ws_train_noiseless, np.eye(6), reg_params=params
         )
-        params_noiseless = prob_noiseless.solve_nominal()
+        try:
+            params_noiseless = prob_noiseless.solve_nominal()
+        except:
+            print("failed to solve noiseless problem")
+            params_noiseless = ip.RigidBody.from_pseudo_inertia_matrix(params.J)
 
         # solve noisy problem with varying constraints
         prob = IPIDProblem(Ys_train, ws_train, cov, reg_params=params)
