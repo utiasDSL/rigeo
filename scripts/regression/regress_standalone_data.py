@@ -19,12 +19,16 @@ import IPython
 # WRENCH_STDEV = np.array([1.2, 1.2, 0.5, 0.02, 0.02, 0.03])
 
 DISC_GRID_SIZE = 2
-TRAIN_TEST_SPLIT = 0.5
-TRAIN_WITH_NOISY_Y = True
-TRAIN_WITH_NOISY_W = True
-USE_BOUNDING_BOX = True
 
-# TODO: test discrete with just vertices includes (and maybe the centroid)
+# fraction of data to be used for training (vs. testing)
+TRAIN_TEST_SPLIT = 0.5
+
+# train only with data in the x-y plane
+TRAIN_WITH_PLANAR_ONLY = True
+
+# use the overall bounding box rather than tight convex hull of the body's
+# shape
+USE_BOUNDING_BOX = True
 
 
 def J_vec_constraint(J, θ, eps=1e-4):
@@ -48,19 +52,29 @@ def schur(X, x, m):
 
 
 class DiscretizedIPIDProblem:
-    def __init__(self, Ys, ws, cov):
+    """Inertial parameter identification optimization using a discrete set of point masses."""
+
+    def __init__(self, Ys, ws, cov, reg_masses, reg_coeff=1e-3):
+        self.n = ws.shape[0]  # number of measurements
         self.A = np.vstack(Ys)
         self.b = np.concatenate(ws)
         self.θ = cp.Variable(10)
         self.Jopt = cp.Variable((4, 4), PSD=True)
+
+        self.reg_masses = reg_masses
+        self.reg_coeff = reg_coeff
 
         cov_inv = np.linalg.inv(cov)
         self.W = np.kron(np.eye(Ys.shape[0]), cov_inv)
 
     def solve(self, points):
         masses = cp.Variable(points.shape[0])
-        # objective = cp.Minimize(cp.sum_squares(self.A @ self.θ - self.b))
-        objective = cp.Minimize(cp.quad_form(self.A @ self.θ - self.b, self.W))
+        regularizer = self.reg_coeff * cp.quad_form(
+            masses - self.reg_masses, np.eye(points.shape[0])
+        )
+        objective = cp.Minimize(
+            0.5 / self.n * cp.quad_form(self.A @ self.θ - self.b, self.W) + regularizer
+        )
         Ps = np.array([np.outer(p, p) for p in points])
         constraints = J_vec_constraint(self.Jopt, self.θ) + [
             masses >= 0,
@@ -76,20 +90,42 @@ class DiscretizedIPIDProblem:
 
 
 class IPIDProblem:
-    """Inertial parameter identification optimization problem."""
+    """Inertial parameter identification optimization problem.
 
-    def __init__(self, Ys, ws, cov):
+    Parameters
+    ----------
+    Ys : ndarray, shape (n, 10, 6)
+        Regressor matrices, one for each of the ``n`` measurements.
+    ws : ndarray, shape (n, 6)
+        Measured wrenches.
+    cov : ndarray, shape (6, 6)
+        Covariance matrix for the measurement noise.
+    reg_params : RigidBody
+        Nominal inertial parameters to use as a regularizer.
+    reg_coeff : float
+        Coefficient for the regularization term.
+    """
+
+    def __init__(self, Ys, ws, cov, reg_params, reg_coeff=1e-3):
+        self.n = ws.shape[0]  # number of measurements
         self.A = np.vstack(Ys)
         self.b = np.concatenate(ws)
         self.θ = cp.Variable(10)
         self.Jopt = cp.Variable((4, 4), PSD=True)
 
+        self.J0_inv = np.linalg.inv(reg_params.J)
+        self.reg_coeff = reg_coeff
+
         cov_inv = np.linalg.inv(cov)
         self.W = np.kron(np.eye(Ys.shape[0]), cov_inv)
 
     def _solve(self, extra_constraints=None, name=None):
-        # objective = cp.Minimize(cp.sum_squares(self.A @ self.θ - self.b))
-        objective = cp.Minimize(cp.quad_form(self.A @ self.θ - self.b, self.W))
+        # regularizer is the entropic distance proposed by (Lee et al., 2020)
+        regularizer = -cp.log_det(self.Jopt) + cp.trace(self.J0_inv @ self.Jopt)
+        objective = cp.Minimize(
+            0.5 / self.n * cp.quad_form(self.A @ self.θ - self.b, self.W)
+            + self.reg_coeff * regularizer
+        )
 
         constraints = J_vec_constraint(self.Jopt, self.θ)
         if extra_constraints is not None:
@@ -201,56 +237,72 @@ def main():
         vertices = data["vertices"][i]
 
         if USE_BOUNDING_BOX:
-            box = ip.AxisAlignedBox.from_points_to_bound(vertices)
+            # box = ip.AxisAlignedBox.from_points_to_bound(vertices)
+            box = data["bounding_box"]
             vertices = box.vertices
             grid = box.grid(n=DISC_GRID_SIZE)
         else:
             grid = ip.polyhedron_grid(vertices, n=DISC_GRID_SIZE)
 
         ellipsoid = ip.minimum_bounding_ellipsoid(vertices)
-        # IPython.embed()
-        # return
 
-        Ys = np.array(data["obj_data"][i]["Ys"])
-        Ys_noisy = np.array(data["obj_data"][i]["Ys_noisy"])
+        # Ys = np.array(data["obj_data"][i]["Ys"])
+        # Ys_noisy = np.array(data["obj_data"][i]["Ys_noisy"])
+        Vs = np.array(data["obj_data"][i]["Vs"])
+        Vs_noisy = np.array(data["obj_data"][i]["Vs_noisy"])
+        As = np.array(data["obj_data"][i]["As"])
+        As_noisy = np.array(data["obj_data"][i]["As_noisy"])
         ws = np.array(data["obj_data"][i]["ws"])
         ws_noisy = np.array(data["obj_data"][i]["ws_noisy"])
 
-        n = Ys.shape[0]
+        n = Vs.shape[0]
         n_train = int(TRAIN_TEST_SPLIT * n)
 
-        # regression data
-        if TRAIN_WITH_NOISY_Y:
-            Ys_train = Ys_noisy[:n_train]
-            Ys_test = Ys_noisy[n_train:]
-        else:
-            Ys_train = Ys[:n_train]
-            Ys_test = Ys[n_train:-1]  # NOTE
+        # regression/training data
+        Vs_train = Vs_noisy[:n_train]
+        As_train = As_noisy[:n_train]
+        ws_train = ws_noisy[:n_train]
+        cov = np.eye(6)  # TODO?
 
-        if TRAIN_WITH_NOISY_W:
-            ws_train = ws_noisy[:n_train]
-            ws_test = ws_noisy[n_train:-1]
-            # cov = np.diag(WRENCH_STDEV**2)
-            cov = np.eye(6)  # TODO?
-        else:
-            ws_train = ws[:n_train]
-            ws_test = ws[n_train:-1]
-            cov = np.eye(6)
+        if TRAIN_WITH_PLANAR_ONLY:
+            Vs_train[:, 2:5] = 0
+            As_train[:, 2:5] = 0
+            ws_train[:, 2:5] = 0
 
-        # solve the problem with no noise
-        prob_noiseless = IPIDProblem(Ys[:n_train], ws[:n_train], np.eye(6))
+        Ys_train = np.array(
+            [ip.body_regressor(V, A) for V, A in zip(Vs_train, As_train)]
+        )
+
+        # test/validation data
+        Vs_test = Vs[n_train:]
+        As_test = As[n_train:]
+        Ys_test = np.array([ip.body_regressor(V, A) for V, A in zip(Vs_test, As_test)])
+        # ws_test = ws_noisy[n_train:]
+        ws_test = ws[n_train:]
+
+        # solve the problem with no noise (just to make sure things are working)
+        Ys_train_noiseless = np.array(
+            [ip.body_regressor(V, A) for V, A in zip(Vs, As)]
+        )[:n_train]
+        ws_train_noiseless = ws[:n_train]
+        prob_noiseless = IPIDProblem(
+            Ys_train_noiseless, ws_train_noiseless, np.eye(6), reg_params=params
+        )
         params_noiseless = prob_noiseless.solve_nominal()
 
         # solve noisy problem with varying constraints
-        prob = IPIDProblem(Ys_train, ws_train, cov)
+        prob = IPIDProblem(Ys_train, ws_train, cov, reg_params=params)
         params_nom = prob.solve_nominal()
         params_poly = prob.solve_polyhedron(vertices)
         params_ell = prob.solve_ellipsoid(ellipsoid)
         params_both = prob.solve_both(vertices, ellipsoid)
 
-        params_grid = DiscretizedIPIDProblem(Ys_train, ws_train, cov).solve(grid)
-
-        # TODO maybe should use noisy values?
+        # regularize with equal point masses
+        # TODO this probably doesn't really make sense
+        reg_masses = params.mass * np.ones(grid.shape[0]) / grid.shape[0]
+        params_grid = DiscretizedIPIDProblem(Ys_train, ws_train, cov, reg_masses).solve(
+            grid
+        )
 
         θ_errors.no_noise.append(np.linalg.norm(params.θ - params_noiseless.θ))
         θ_errors.nominal.append(np.linalg.norm(params.θ - params_nom.θ))
@@ -294,20 +346,20 @@ def main():
         print("==========")
         print(f"nv = {vertices.shape[0]}")
         print(f"ng = {grid.shape[0]}")
-        print()
-        θ_errors.print(index=i)
+        # print()
+        # θ_errors.print(index=i)
         print()
         riemannian_errors.print(index=i)
         print()
         validation_errors.print(index=i)
 
-        if i == 9:
-            IPython.embed()
+        # if i == 19:
+        #     IPython.embed()
 
     print(f"\nAverages")
     print("========")
-    print()
-    θ_errors.print_average()
+    # print()
+    # θ_errors.print_average()
     print()
     riemannian_errors.print_average()
     print()
