@@ -35,20 +35,6 @@ REGULARIZATION_COEFF = 1e-3
 # REGULARIZATION_COEFF = 0
 
 
-def J_vec_constraint(J, θ, eps=1e-4):
-    """Constraint to enforce consistency between J and θ representations."""
-    H = J[:3, :3]
-    I = cp.trace(H) * np.eye(3) - H
-    return [
-        J >> eps * np.eye(4),
-        J[3, 3] == θ[0],
-        J[:3, 3] == θ[1:4],
-        I[0, :3] == θ[4:7],
-        I[1, 1:3] == θ[7:9],
-        I[2, 2] == θ[9],
-    ]
-
-
 class DiscretizedIPIDProblem:
     """Inertial parameter identification optimization using a discrete set of point masses."""
 
@@ -74,7 +60,7 @@ class DiscretizedIPIDProblem:
             0.5 / self.n * cp.quad_form(self.A @ self.θ - self.b, self.W) + regularizer
         )
         Ps = np.array([np.outer(p, p) for p in points])
-        constraints = J_vec_constraint(self.Jopt, self.θ) + [
+        constraints = ip.J_vec_constraint(self.Jopt, self.θ) + [
             masses >= 0,
             cp.sum(masses) == self.θ[0],
             masses.T @ points == self.θ[1:4],
@@ -128,7 +114,7 @@ class IPIDProblem:
             + self.reg_coeff * regularizer
         )
 
-        constraints = J_vec_constraint(self.Jopt, self.θ)
+        constraints = ip.J_vec_constraint(self.Jopt, self.θ)
         if extra_constraints is not None:
             constraints.extend(extra_constraints)
 
@@ -172,15 +158,6 @@ class IPIDProblem:
             cp.trace(ellipsoid.Q @ self.Jopt) >= 0,
         ]
         return self._solve(extra_constraints)
-
-
-def validation_rmse(Ys, ws, θ):
-    """Compute root mean square wrench error on a validation set."""
-    error = Ys @ θ - ws
-    square = np.sum(error**2, axis=1)
-    mean = np.mean(square)
-    root = np.sqrt(mean)
-    return root
 
 
 class ErrorSet:
@@ -357,19 +334,19 @@ def main():
         )
 
         validation_errors.no_noise.append(
-            validation_rmse(Ys_test, ws_test, params_noiseless.θ)
+            ip.validation_rmse(Ys_test, ws_test, params_noiseless.θ)
         )
         validation_errors.nominal.append(
-            validation_rmse(Ys_test, ws_test, params_nom.θ)
+            ip.validation_rmse(Ys_test, ws_test, params_nom.θ)
         )
         validation_errors.ellipsoid.append(
-            validation_rmse(Ys_test, ws_test, params_ell.θ)
+            ip.validation_rmse(Ys_test, ws_test, params_ell.θ)
         )
         validation_errors.polyhedron.append(
-            validation_rmse(Ys_test, ws_test, params_poly.θ)
+            ip.validation_rmse(Ys_test, ws_test, params_poly.θ)
         )
         validation_errors.discrete.append(
-            validation_rmse(Ys_test, ws_test, params_grid.θ)
+            ip.validation_rmse(Ys_test, ws_test, params_grid.θ)
         )
 
         print(f"\nProblem {i + 1}")

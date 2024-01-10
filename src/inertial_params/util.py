@@ -98,3 +98,12 @@ def compute_evaluation_times(duration, step=0.1):
     n = int(np.ceil(duration / step))
     times = step * np.arange(n)
     return n, times
+
+
+def validation_rmse(Ys, ws, θ):
+    """Compute root mean square wrench error on a validation set."""
+    error = Ys @ θ - ws
+    square = np.sum(error**2, axis=1)
+    mean = np.mean(square)
+    root = np.sqrt(mean)
+    return root

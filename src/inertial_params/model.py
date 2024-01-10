@@ -131,8 +131,8 @@ class RobotModel:
         # (i.e, Ixz and Iyy are swapped)
         Y = Y_pin.copy()
         for i in range(self.model.nv):
-            Y[:, i + 6] = Y_pin[:, i + 7]
-            Y[:, i + 7] = Y_pin[:, i + 6]
+            Y[:, i * 10 + 6] = Y_pin[:, i * 10 + 7]
+            Y[:, i * 10 + 7] = Y_pin[:, i * 10 + 6]
         return Y
 
     def link_pose(self, link_idx=None, rotation_matrix=False):
