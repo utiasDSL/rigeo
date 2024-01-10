@@ -72,3 +72,29 @@ def schur(X, x, m):
     y = np.reshape(x, (x.shape[0], 1))
     z = np.reshape(m, (1, 1))
     return np.block([[X, y], [y.T, z]])
+
+
+def compute_evaluation_times(duration, step=0.1):
+    """Compute times spaced at a fixed step across an interval.
+
+    Times start at zero.
+
+    Parameters
+    ----------
+    duration : float, positive
+        Duration of the interval.
+    step : float, positive
+        Duration of each step.
+
+    Returns
+    -------
+    : tuple
+        A tuple ``(n, times)`` representing the number of times and the time
+        values themselves.
+    """
+    assert duration > 0
+    assert step > 0
+
+    n = int(np.ceil(duration / step))
+    times = step * np.arange(n)
+    return n, times

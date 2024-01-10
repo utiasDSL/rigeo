@@ -27,12 +27,7 @@ VEL_NOISE_WIDTH = 0.1
 VEL_NOISE_BIAS = 0.1
 
 
-def compute_eval_times(duration, step=0.1):
-    n = int(np.ceil(duration / step))
-    times = step * np.arange(n)
-    return n, times
-
-
+# TODO it would be cool have a Rotation class with a Jacobian method
 def SO3_jacobian(axis_angle, eps=1e-4):
     angle = np.linalg.norm(axis_angle)
     if angle < eps:
@@ -90,7 +85,7 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
         # return np.linalg.solve(M, wrench(t) - ip.skew6(ξ) @ M @ ξ)
 
     # integrate the trajectory
-    n, t_eval = compute_eval_times(duration=duration, step=eval_step)
+    n, t_eval = ip.compute_evaluation_times(duration=duration, step=eval_step)
     res = solve_ivp(fun=f, t_span=[0, duration], y0=np.zeros(9), t_eval=t_eval)
     assert np.allclose(res.t, t_eval)
 
@@ -112,7 +107,7 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
     velocities_noisy = velocities + vel_noise
 
     # compute midpoint values
-    accelerations_mid = accelerations.copy()
+    # accelerations_mid = accelerations.copy()
     # for i in range(1, n - 1):
     #     accelerations_mid[i] = (velocities_noisy[i + 1] - velocities_noisy[i - 1]) / (
     #         2 * eval_step
