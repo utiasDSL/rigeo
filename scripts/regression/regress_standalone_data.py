@@ -19,7 +19,7 @@ import IPython
 # these values are taken from the Robotiq FT-300 datasheet
 # WRENCH_STDEV = np.array([1.2, 1.2, 0.5, 0.02, 0.02, 0.03])
 
-DISC_GRID_SIZE = 2
+DISC_GRID_SIZE = 5
 
 # fraction of data to be used for training (vs. testing)
 TRAIN_TEST_SPLIT = 0.2
@@ -31,7 +31,8 @@ TRAIN_WITH_PLANAR_ONLY = True
 # shape
 USE_BOUNDING_BOX = True
 
-REGULARIZATION_COEFF = 1e-2
+REGULARIZATION_COEFF = 1e-3
+# REGULARIZATION_COEFF = 0
 
 
 def J_vec_constraint(J, θ, eps=1e-4):
@@ -119,8 +120,11 @@ class IPIDProblem:
     def _solve(self, extra_constraints=None, name=None):
         # regularizer is the entropic distance proposed by (Lee et al., 2020)
         regularizer = -cp.log_det(self.Jopt) + cp.trace(self.J0_inv @ self.Jopt)
+
+        # psd_wrap fixes an occasional internal scipy error
+        # https://github.com/cvxpy/cvxpy/issues/1421#issuecomment-865977139
         objective = cp.Minimize(
-            0.5 / self.n * cp.quad_form(self.A @ self.θ - self.b, self.W)
+            0.5 / self.n * cp.quad_form(self.A @ self.θ - self.b, cp.psd_wrap(self.W))
             + self.reg_coeff * regularizer
         )
 
@@ -207,11 +211,20 @@ class ErrorSet:
     def print_average(self):
         print(self.name)
         print("".ljust(len(self.name), "-"))
-        print(f"no noise   = {np.mean(self.no_noise)}")
-        print(f"nominal    = {np.mean(self.nominal)}")
-        print(f"ellipsoid  = {np.mean(self.ellipsoid)}")
-        print(f"polyhedron = {np.mean(self.polyhedron)}")
-        print(f"discrete   = {np.mean(self.discrete)}")
+        print(f"no noise   = {np.median(self.no_noise)}")
+        print(f"nominal    = {np.median(self.nominal)}")
+        print(f"ellipsoid  = {np.median(self.ellipsoid)}")
+        print(f"polyhedron = {np.median(self.polyhedron)}")
+        print(f"discrete   = {np.median(self.discrete)}")
+
+        poly = np.array(self.polyhedron)
+        nom = np.array(self.nominal)
+        ell = np.array(self.ellipsoid)
+        n = len(self.polyhedron)
+        n_poly_better_than_nom = np.sum(poly <= nom)
+        n_poly_better_than_ell = np.sum(poly <= ell)
+        print(f"poly better than nom: {n_poly_better_than_nom}/{n}")
+        print(f"poly better than ell: {n_poly_better_than_ell}/{n}")
 
     # def save(self, filename):
     #     with open(filename, "w") as f:
@@ -242,6 +255,16 @@ def main():
             box = data["bounding_box"]
             vertices = box.vertices
             grid = box.grid(n=DISC_GRID_SIZE)
+
+            reg_mass = 1.0
+            reg_com = box.center
+            reg_inertia = ip.cuboid_inertia_matrix(reg_mass, box.half_extents)
+            reg_params = ip.InertialParameters.from_mcI(
+                mass=reg_mass, com=reg_com, I=reg_inertia
+            )
+
+            # regularization for discrete approach
+            reg_masses = reg_mass * np.ones(grid.shape[0]) / grid.shape[0]
         else:
             grid = ip.polyhedron_grid(vertices, n=DISC_GRID_SIZE)
 
@@ -249,42 +272,28 @@ def main():
 
         # Ys = np.array(data["obj_data"][i]["Ys"])
         # Ys_noisy = np.array(data["obj_data"][i]["Ys_noisy"])
-        Vs = np.array(data["obj_data"][i]["Vs"])
-        Vs_noisy = np.array(data["obj_data"][i]["Vs_noisy"])
-        As = np.array(data["obj_data"][i]["As"])
-        As_noisy = np.array(data["obj_data"][i]["As_noisy"])
-        ws = np.array(data["obj_data"][i]["ws"])
-        ws_noisy = np.array(data["obj_data"][i]["ws_noisy"])
+        Vs = np.array(data["obj_data_full"][i]["Vs"])
+        As = np.array(data["obj_data_full"][i]["As"])
+        ws = np.array(data["obj_data_full"][i]["ws"])
 
         n = Vs.shape[0]
         n_train = int(TRAIN_TEST_SPLIT * n)
+        # n_train = 1
+        cov = np.eye(6)  # TODO?
 
         # regression/training data
+        if TRAIN_WITH_PLANAR_ONLY:
+            Vs_noisy = np.array(data["obj_data_planar"][i]["Vs_noisy"])
+            As_noisy = np.array(data["obj_data_planar"][i]["As_noisy"])
+            ws_noisy = np.array(data["obj_data_planar"][i]["ws_noisy"])
+        else:
+            Vs_noisy = np.array(data["obj_data_full"][i]["Vs_noisy"])
+            As_noisy = np.array(data["obj_data_full"][i]["As_noisy"])
+            ws_noisy = np.array(data["obj_data_full"][i]["ws_noisy"])
+
         Vs_train = Vs_noisy[:n_train]
         As_train = As_noisy[:n_train]
         ws_train = ws_noisy[:n_train]
-        cov = np.eye(6)  # TODO?
-
-        if TRAIN_WITH_PLANAR_ONLY:
-            C_wbs = np.array(data["obj_data"][i]["C_wbs"])
-            for j in range(n_train):
-                C_wb = C_wbs[j]
-                X_wb = block_diag(C_wb, C_wb)
-                V_w = X_wb @ Vs_train[j]
-                A_w = X_wb @ As_train[j]
-                w_w = X_wb @ ws_train[j]
-
-                V_w[2:5] = 0
-                A_w[2:5] = 0
-                w_w[2:5] = 0
-
-                Vs_train[j] = X_wb.T @ V_w
-                As_train[j] = X_wb.T @ A_w
-                ws_train[j] = X_wb.T @ w_w
-
-            # Vs_train[:, 2:5] = 0
-            # As_train[:, 2:5] = 0
-            # ws_train[:, 2:5] = 0
 
         Ys_train = np.array(
             [ip.body_regressor(V, A) for V, A in zip(Vs_train, As_train)]
@@ -306,20 +315,14 @@ def main():
             Ys_train_noiseless,
             ws_train_noiseless,
             np.eye(6),
-            reg_params=params,
+            reg_params=reg_params,
             reg_coeff=REGULARIZATION_COEFF,
         )
-        try:
-            params_noiseless = prob_noiseless.solve_nominal()
-        except:
-            print("failed to solve noiseless problem")
-            params_noiseless = ip.InertialParameters.from_pseudo_inertia_matrix(
-                params.J
-            )
+        params_noiseless = prob_noiseless.solve_nominal()
 
         # solve noisy problem with varying constraints
         prob = IPIDProblem(
-            Ys_train, ws_train, cov, reg_params=params, reg_coeff=REGULARIZATION_COEFF
+            Ys_train, ws_train, cov, reg_params=reg_params, reg_coeff=REGULARIZATION_COEFF
         )
         params_nom = prob.solve_nominal()
         params_poly = prob.solve_polyhedron(vertices)
@@ -327,8 +330,6 @@ def main():
         params_both = prob.solve_both(vertices, ellipsoid)
 
         # regularize with equal point masses
-        # TODO this probably doesn't really make sense
-        reg_masses = params.mass * np.ones(grid.shape[0]) / grid.shape[0]
         params_grid = DiscretizedIPIDProblem(
             Ys_train, ws_train, cov, reg_masses, reg_coeff=REGULARIZATION_COEFF
         ).solve(grid)
@@ -385,7 +386,7 @@ def main():
         # if i == 19:
         #     IPython.embed()
 
-    print(f"\nAverages")
+    print(f"\nMedians")
     print("========")
     # print()
     # θ_errors.print_average()

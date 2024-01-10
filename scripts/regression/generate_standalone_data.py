@@ -24,7 +24,7 @@ OFFSET = np.array([0, 0, 0])
 MASS = 1.0  # TODO vary as well?
 
 VEL_NOISE_WIDTH = 0.1
-VEL_NOISE_BIAS = 0
+VEL_NOISE_BIAS = 0.1
 
 
 def compute_eval_times(duration, step=0.1):
@@ -58,14 +58,14 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
             [
                 np.sin(t),
                 np.sin(t + np.pi / 3),
-                np.sin(t + 2 * np.pi / 3) if not planar else 0,
-                np.sin(t + np.pi) if not planar else 0,
-                np.sin(t + 4 * np.pi / 3) if not planar else 0,
+                np.sin(t + 2 * np.pi / 3),
+                np.sin(t + np.pi),
+                np.sin(t + 4 * np.pi / 3),
                 np.sin(t + 5 * np.pi / 3),
             ]
         )
 
-    def f(t, x):
+    def f(t, x, debug=False):
         aa = x[:3]  # rotation (axis-angle)
         ξ = x[3:]  # generalized velocity
 
@@ -78,8 +78,13 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
 
         # solve Newton-Euler for acceleration
         ξ_dot = np.linalg.solve(M, wrench(t) - ip.skew6(ξ) @ M @ ξ)
+        if planar:
+            ξ_dot[2:5] = 0
 
         x_dot = np.concatenate((aa_dot, ξ_dot))
+        # if debug:
+        #     print("debug")
+        #     IPython.embed()
         return x_dot
         # solve Newton-Euler for acceleration
         # return np.linalg.solve(M, wrench(t) - ip.skew6(ξ) @ M @ ξ)
@@ -96,25 +101,23 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
     # true trajectory
     velocities = xs[:, 3:]
     accelerations = np.array([f(t, x)[3:] for t, x in zip(t_eval, xs)])
-    wrenches = np.array([wrench(t) for t in t_eval])
+    # wrenches = np.array([wrench(t) for t in t_eval])
+    wrenches = np.array([M @ A + ip.skew6(V) @ M @ V for V, A in zip(velocities, accelerations)])
 
     # apply noise to velocity
     vel_noise_raw = np.random.random(size=velocities.shape) - 0.5  # mean = 0, width = 1
     vel_noise = VEL_NOISE_WIDTH * vel_noise_raw + VEL_NOISE_BIAS
     if planar:
-        # for i in range(vel_noise.shape[0]):
-        #     C_wb = C_wbs[i]
-        #     vel_noise_world = np.concatenate([C_wb @ ξ
         vel_noise[:, 2:5] = 0
     velocities_noisy = velocities + vel_noise
 
     # compute midpoint values
     accelerations_mid = accelerations.copy()
-    for i in range(1, n - 1):
-        accelerations_mid[i] = (velocities_noisy[i + 1] - velocities_noisy[i - 1]) / (
-            2 * eval_step
-        )
-    # accelerations_mid = (velocities_noisy[1:, :] - velocities_noisy[:-1, :]) / eval_step
+    # for i in range(1, n - 1):
+    #     accelerations_mid[i] = (velocities_noisy[i + 1] - velocities_noisy[i - 1]) / (
+    #         2 * eval_step
+    #     )
+    accelerations_mid = (velocities_noisy[1:, :] - velocities_noisy[:-1, :]) / eval_step
     velocities_mid = (velocities_noisy[1:, :] + velocities_noisy[:-1, :]) / 2
     # velocities_mid = velocities_noisy  # [:-1, :]  # NOTE
 
@@ -159,7 +162,8 @@ def main():
     # bounding_box = ip.AxisAlignedBox.cube(BOUNDING_BOX_HALF_EXTENT, center=OFFSET)
     bounding_box = ip.AxisAlignedBox(BOUNDING_BOX_HALF_EXTENTS, center=OFFSET)
 
-    obj_data = []
+    obj_data_full = []
+    obj_data_planar = []
     param_data = []
     vertices_data = []
 
@@ -201,16 +205,18 @@ def main():
         assert np.isclose(params.mass, MASS)
         assert bounding_box.contains(params.com)
 
-        obj_datum = generate_trajectory(params, planar=args.planar)
-
-        obj_data.append(obj_datum)
+        # note noise will be different in each, but this is fine if we only use
+        # one for training
+        obj_data_full.append(generate_trajectory(params, planar=False))
+        obj_data_planar.append(generate_trajectory(params, planar=True))
         param_data.append(params)
         vertices_data.append(vertices)
 
     data = {
         "num_obj": NUM_OBJ,
         "bounding_box": bounding_box,
-        "obj_data": obj_data,
+        "obj_data_full": obj_data_full,
+        "obj_data_planar": obj_data_planar,
         "params": param_data,
         "vertices": vertices_data,
     }
