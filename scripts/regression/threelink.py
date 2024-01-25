@@ -5,7 +5,6 @@ import time
 import numpy as np
 import cvxpy as cp
 
-# import pinocchio
 import pybullet as pyb
 import pybullet_data
 import pyb_utils

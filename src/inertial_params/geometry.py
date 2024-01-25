@@ -5,40 +5,118 @@ import cdd
 from scipy.linalg import sqrtm, orth
 from scipy.spatial import ConvexHull
 
+from inertial_params.random import random_weight_vectors
 
-# TODO
+
 class ConvexPolyhedron:
-    def __init__(self, vertices):
-        self.vertices = vertices
+    """A convex polyhedron in ``dim`` dimensions.
+
+    Parameters
+    ----------
+    vertices : np.ndarray, shape (nv, dim)
+        The extremal points of the polyhedron.
+    prune_vertices : bool
+        If ``True``, the vertices will be pruned to eliminate any non-extremal
+        points.
+
+    Attributes
+    ----------
+    vertices : np.ndarray, shape (nv, dim)
+        The extremal points of the polyhedron.
+    A : np.ndarray
+        The matrix part of the face (half-space) form of the polyhedron,
+        :math:`\\{p\\in\\mathbb{R}^{dim}\\mid Ap\\leq b \\}`
+    b : np.ndarray
+        The vector part of the face form of the polyhedron.
+    """
+    def __init__(self, vertices, prune_vertices=False):
+        if prune_vertices:
+            vertices = convex_hull(vertices)
+        self.vertices = np.array(vertices)
         self.A, self.b = polyhedron_span_to_face_form(vertices)
 
     def __repr__(self):
         return f"ConvexPolyhedron(vertices={self.vertices})"
 
-    @classmethod
-    def from_convex_hull_of(cls, points):
-        vertices = convex_hull(points)
-        return cls(vertices)
+    @property
+    def nv(self):
+        """The number of vertices."""
+        return self.vertices.shape[0]
+
+    @property
+    def dim(self):
+        """The dimension of the ambient space."""
+        return self.vertices.shape[1]
 
     def contains(self, points, tol=1e-8):
+        """Test if the polyhedron contains a set of points.
+
+        Parameters
+        ----------
+        points : np.ndarray, shape (n, self.dim)
+            The points to check.
+        tol : float, non-negative
+            The numerical tolerance for membership.
+
+        Returns
+        -------
+        : np.ndarray, shape (n,)
+            Boolean array where each entry is ``True`` if the polyhedron
+            contains the corresponding point and ``False`` otherwise.
+        """
         points = np.atleast_2d(points)
         c = self.A @ points.T <= np.tile(self.b, (points.shape[0], 1)).T + tol
         return np.array(np.product(c, axis=0), dtype=bool)
 
     def random_points(self, shape=1):
-        # TODO test this...
-        box = self.aabb()
-        candidates = box.random_points(shape)
-        contains = self.contains(candidates)
-        n = np.product(shape)
-        while np.sum(contains) < n:
-            mask = np.logical_not(contains)
-            candidates[mask] = box.random_points(shape=candidates[mask].shape[:-1])
-            contains = self.contains(candidates)
-        return candidates
+        """Generate random points contained in the polyhedron.
+
+        Parameters
+        ----------
+        shape : int or tuple
+            The shape of the set of points to be returned.
+
+        Returns
+        -------
+        : np.ndarray, shape ``shape + (self.dim,)``
+            The random points.
+        """
+        if type(shape) is int:
+            shape = (shape,)
+        shape = shape + (self.nv,)
+        w = random_weight_vectors(shape)
+        return w @ self.vertices
 
     def aabb(self):
+        """Generate an axis-aligned box that bounds the polyhedron.
+
+        Returns
+        -------
+        : AxisAlignedBox
+            The axis-aligned bounding box.
+        """
         return AxisAlignedBox.from_points_to_bound(self.vertices)
+
+    def grid(self, n):
+        """Generate a regular grid inside the polyhedron.
+
+        The approach is to compute the axis-aligned bounding box, generate a
+        grid for that, and then discard any points not inside the actual
+        polyhedron.
+
+        Parameters
+        ----------
+        n : int
+            The maximum number of points along each dimension.
+
+        Returns
+        -------
+        : np.ndarray, shape (N, self.dim)
+            The points contained in the grid.
+        """
+        box_grid = self.aabb().grid(n)
+        contained = self.contains(box_grid)
+        return box_grid[contained, :]
 
 
 def convex_hull(points, rcond=None):
@@ -95,6 +173,7 @@ def polyhedron_span_to_face_form(vertices):
     return A, b
 
 
+# TODO deprecate in favour of ConvexPolyhedron.grid
 def polyhedron_grid(vertices, n):
     """Generate a regular grid inside a convex polyhedron.
 
@@ -238,6 +317,7 @@ class AxisAlignedBox:
         return np.array(points)
 
 
+# TODO rename c -> center, possibly rename Einv also
 class Ellipsoid:
     """Ellipsoid with a variety of representations."""
 
@@ -282,6 +362,24 @@ class Ellipsoid:
         return cls(Einv=Einv, c=center)
 
     @classmethod
+    def from_half_extents(cls, half_extents, center=None):
+        """Construct an ellipsoid from its half extents, which are the lengths
+        of the semi-major axes.
+
+        Parameters
+        ----------
+        half_extents : np.ndarray, shape (n,)
+            The lengths of the semi-major axes, where ``n`` is the dimension.
+        center : np.ndarray, shape (n,)
+            Optional center point of the ellipsoid.
+        """
+        half_extents = np.array(half_extents)
+        Einv = np.diag(1. / half_extents**2)
+        if center is None:
+            center = np.zeros_like(half_extents)
+        return cls(Einv=Einv, c=center)
+
+    @classmethod
     def from_Ab(cls, A, b, rcond=None):
         Einv = A @ A
 
@@ -310,7 +408,7 @@ class Ellipsoid:
         """``A`` from ``(A, b)`` representation of the ellipsoid.
 
         .. math::
-           \mathcal{E} = \\{x\\in\\mathbb{R}^d \mid \\|Ax+b\\|^2\\leq 1\\}
+           \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\|Ax+b\\|^2\\leq 1\\}
         """
         return sqrtm(self.Einv)
 
@@ -319,7 +417,7 @@ class Ellipsoid:
         """``b`` from ``(A, b)`` representation of the ellipsoid.
 
         .. math::
-           \mathcal{E} = \\{x\\in\\mathbb{R}^d \mid \\|Ax+b\\|^2\\leq 1\\}
+           \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\|Ax+b\\|^2\\leq 1\\}
         """
         return -self.A @ self.c
 
@@ -328,7 +426,7 @@ class Ellipsoid:
         """Q representation of the ellipsoid.
 
         .. math::
-           \mathcal{E} = \\{x\\in\\mathbb{R}^d \mid \\tilde{x}^TQ\\tilde{q}\\geq 0\\}
+           \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\tilde{x}^TQ\\tilde{q}\\geq 0\\}
         """
 
         Q = np.zeros((self.dim + 1, self.dim + 1))
@@ -351,13 +449,15 @@ class Ellipsoid:
         """
         return self.rank < self.dim
 
-    def contains(self, points):
+    def contains(self, points, tol=1e-8):
         """Check if points are contained in the ellipsoid.
 
         Parameters
         ----------
         points : iterable
             Points to check. May be a single point or a list or array of points.
+        tol : float, non-negative
+            Numerical tolerance for qualifying as inside the ellipsoid.
 
         Returns
         -------
@@ -369,10 +469,10 @@ class Ellipsoid:
         points = np.array(points)
         if points.ndim == 1:
             p = points - self.c
-            return p @ self.Einv @ p <= 1
+            return p @ self.Einv @ p <= 1 + tol
         elif points.ndim == 2:
             ps = points - self.c
-            return np.array([p @ self.Einv @ p <= 1 for p in ps])
+            return np.array([p @ self.Einv @ p <= 1 + tol for p in ps])
         else:
             raise ValueError(
                 f"points must have 1 or 2 dimensions, but has {points.ndim}."

@@ -1,6 +1,8 @@
 import numpy as np
 
-import inertial_params as util
+import inertial_params.util as util
+import inertial_params.geometry as geom
+from inertial_params.random import random_psd_matrix
 
 
 def pseudo_inertia_matrix(m, c, H):
@@ -15,13 +17,19 @@ def pseudo_inertia_matrix(m, c, H):
 
 
 def cuboid_inertia_matrix(mass, half_extents):
-    """Inertia matrix for a rectangular cuboid with side_lengths in (x, y, z)
-    dimensions."""
+    """Inertia matrix for a rectangular cuboid."""
     lx, ly, lz = 2 * np.array(half_extents)
     xx = ly**2 + lz**2
     yy = lx**2 + lz**2
     zz = lx**2 + ly**2
     return mass * np.diag([xx, yy, zz]) / 12.0
+
+
+def cuboid_vertices_inertia_matrix(mass, half_extents):
+    """Inertia matrix for a set of equal-mass points at the vertices of a cuboid."""
+    points = geom.AxisAlignedBox(half_extents).vertices
+    masses = np.ones(8) / 8
+    return point_mass_system_inertia(masses, points)[1]
 
 
 def hollow_sphere_inertia_matrix(mass, radius):
@@ -161,6 +169,8 @@ class InertialParameters:
     @classmethod
     def from_point_masses(cls, masses, points):
         """Construct from a system of point masses."""
+        masses = np.array(masses)
+        points = np.array(points)
         assert masses.shape[0] == points.shape[0]
         mass = sum(masses)
         h = point_mass_system_h(masses, points)
@@ -187,6 +197,18 @@ class InertialParameters:
         assert I.shape == (3, 3)
         h = com / mass
         H = I2H(I)
+        return cls(mass=mass, h=h, H=H)
+
+    @classmethod
+    def random(cls):
+        """Generate a random set of physically consistent inertial parameters.
+
+        Useful for testing purposes.
+        """
+        mass = 0.1 + np.random.random() * 0.9
+        com = np.random.random(3) - 0.5
+        h = mass * com
+        H = random_psd_matrix((3, 3)) + mass * np.outer(com, com)
         return cls(mass=mass, h=h, H=H)
 
     def __add__(self, other):
