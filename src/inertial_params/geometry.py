@@ -1,8 +1,10 @@
 """Polyhedral and ellipsoidal geometry."""
+from collections.abc import Iterable
+
 import numpy as np
 import cvxpy as cp
 import cdd
-from scipy.linalg import sqrtm, orth
+from scipy.linalg import sqrtm, orth, null_space
 from scipy.spatial import ConvexHull
 
 from inertial_params.random import random_weight_vectors
@@ -29,10 +31,13 @@ class ConvexPolyhedron:
     b : np.ndarray
         The vector part of the face form of the polyhedron.
     """
+
     def __init__(self, vertices, prune_vertices=False):
         if prune_vertices:
             vertices = convex_hull(vertices)
         self.vertices = np.array(vertices)
+
+        # the normals of the polyhedron are stored in the A matrix
         self.A, self.b = polyhedron_span_to_face_form(vertices)
 
     def __repr__(self):
@@ -155,6 +160,7 @@ def convex_hull(points, rcond=None):
     return H @ R.T
 
 
+# TODO add face to span form
 def polyhedron_span_to_face_form(vertices):
     """Convert a set of vertices to a set of linear inequalities A <= b."""
     # span form
@@ -316,6 +322,56 @@ class AxisAlignedBox:
                     points.append([x[i], y[j], z[k]])
         return np.array(points)
 
+    def as_ellipsoidal_intersection(self):
+        r1, r2, r3 = self.half_extents
+        A1 = np.diag([1.0 / r1**2, 0, 0])
+        A2 = np.diag([0, 1.0 / r2**2, 0])
+        A3 = np.diag([0, 0, 1.0 / r3**2])
+        return [Ellipsoid(A, self.center) for A in [A1, A2, A3]]
+
+
+class Cylinder:
+    def __init__(self, length, radius, axis=None, center=None):
+        assert length > 0
+        assert radius > 0
+
+        if axis is None:
+            axis = np.array([0, 0, 1])
+        else:
+            axis = np.array(axis) / np.linalg.norm(axis)
+        self.axis = axis
+        self.length = length
+        self.radius = radius
+
+        if center is None:
+            center = np.zeros_like(axis)
+        self.center = np.array(center)
+
+        self.U = null_space(self.axis[None, :])
+
+    def as_ellipsoidal_intersection(self):
+        # TODO probably just make these properties of the cylinder
+        A1 = 4 * np.outer(self.axis, self.axis) / self.length**2
+        A2 = self.U @ self.U.T / self.radius**2
+        return [Ellipsoid(A, self.center) for A in [A1, A2]]
+
+    def contains(self, points, tol=1e-8):
+        points = np.atleast_2d(points)
+        xs = points - self.center
+        contained_lengthwise = np.abs(xs @ self.axis) <= self.length / 2
+        contained_transverse = np.array(
+            [x @ self.U @ self.U.T @ x <= self.radius**2 for x in xs], dtype=bool
+        )
+        assert contained_lengthwise.shape == contained_transverse.shape
+        return np.logical_and(contained_lengthwise, contained_transverse)
+
+    def inscribed_box(self):
+        # TODO once box has rotation information
+        pass
+
+    def bounding_box(self):
+        pass
+
 
 # TODO rename c -> center, possibly rename Einv also
 class Ellipsoid:
@@ -374,7 +430,7 @@ class Ellipsoid:
             Optional center point of the ellipsoid.
         """
         half_extents = np.array(half_extents)
-        Einv = np.diag(1. / half_extents**2)
+        Einv = np.diag(1.0 / half_extents**2)
         if center is None:
             center = np.zeros_like(half_extents)
         return cls(Einv=Einv, c=center)

@@ -5,17 +5,6 @@ import inertial_params.geometry as geom
 from inertial_params.random import random_psd_matrix
 
 
-def pseudo_inertia_matrix(m, c, H):
-    """Construct the pseudo-inertia matrix."""
-    h = m * c
-    J = np.zeros((4, 4))
-    J[:3, :3] = H
-    J[:3, 3] = h
-    J[3, :3] = h
-    J[3, 3] = m
-    return J
-
-
 def cuboid_inertia_matrix(mass, half_extents):
     """Inertia matrix for a rectangular cuboid."""
     lx, ly, lz = 2 * np.array(half_extents)
@@ -65,14 +54,6 @@ def H2I(H):
 
 def I2H(I):
     return 0.5 * np.trace(I) * np.eye(3) - I
-
-
-def body_regressor(V, A):
-    """Compute regressor matrix Y given body frame velocity V and acceleration A.
-
-    The regressor maps the inertial parameters to the body inertial wrench: w = Yθ.
-    """
-    return util.lift6(A) + util.skew6(V) @ util.lift6(V)
 
 
 class InertialParameters:
