@@ -194,6 +194,19 @@ class ConvexPolyhedron:
     #     if self.A.shape
     #     pass
 
+    def _contains_constraints(self, points):
+        """Constraints for cvxpy variable points to lie inside the polyhedron."""
+        if points.ndim == 1:
+            points = [points]
+
+        constraints = []
+        for point in points:
+            constraints.append(self.face_form.A_ineq @ point <= self.face_form.b_ineq)
+            if self.face_form.spans_linear:
+                constraints.append(self.face_form.A_eq @ point == self.face_form.b_eq)
+        return constraints
+
+
     def contains(self, points, tol=1e-8):
         """Test if the polyhedron contains a set of points.
 
@@ -210,6 +223,9 @@ class ConvexPolyhedron:
             Boolean array where each entry is ``True`` if the polyhedron
             contains the corresponding point and ``False`` otherwise.
         """
+        if isinstance(points, cp.Variable):
+            return self._contains_constraints(points)
+
         points = np.atleast_2d(points)
         n = points.shape[0]
 
@@ -563,7 +579,7 @@ class Cylinder:
         pass
 
 
-# TODO rename c -> center, possibly rename Einv also
+# TODO possibly rename Einv
 class Ellipsoid:
     """Ellipsoid with a variety of representations."""
 
@@ -695,6 +711,12 @@ class Ellipsoid:
         """
         return self.rank < self.dim
 
+    def _contains_constraints(self, points):
+        c = self.center
+        if points.ndim == 1:
+            points = [points]
+        return [(p - c) @ self.Einv @ (p - c) <= 1 for p in points]
+
     def contains(self, points, tol=1e-8):
         """Check if points are contained in the ellipsoid.
 
@@ -712,6 +734,9 @@ class Ellipsoid:
             the ellipsoid, or ``False`` if not. For multiple points, return a
             boolean array with one value per point.
         """
+        if isinstance(points, cp.Variable):
+            return self._contains_constraints(points)
+
         points = np.array(points)
         if points.ndim == 1:
             p = points - self.center

@@ -45,8 +45,9 @@ def convex_hull(points):
 
 
 # TODO this does not handle degeneracy properly
-poly = ip.ConvexPolyhedron(
-    vertices=np.array([[1, 1, 1], [1, -1, 0], [-1, -1, 0], [-1, 1, 0]])
-)
+poly = ip.ConvexPolyhedron.from_vertices([[1, 1, 1], [1, -1, 0], [-1, -1, 0], [-1, 1, 0]])
+
+point = cp.Variable(3)
+# poly.contains(point)
 
 IPython.embed()
