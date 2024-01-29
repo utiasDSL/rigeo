@@ -14,7 +14,7 @@ def test_cylinder_at_origin():
     n = 10  # number of point masses per trial
 
     cylinder = ip.Cylinder(length=1, radius=0.5)
-    bounding_box = ip.AxisAlignedBox(half_extents=[0.5, 0.5, 0.5])
+    bounding_box = ip.Box(half_extents=[0.5, 0.5, 0.5])
     Qs = Q_matrices(cylinder)
 
     for i in range(N):

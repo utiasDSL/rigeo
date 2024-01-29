@@ -10,6 +10,10 @@
 * Obtain the intersection of two convex polyhedra. This is particularly useful
   for obtaining contact patches between polyhedral objects for manipulation.
 * Obtain the distance between primitive shapes using convex programming.
+* Compute maximum-volume inscribed and minimum-volume bounding ellipsoids for
+  sets of points.
+* Compute convex hulls for degenerate sets of points (i.e., points that live in
+  some lower-dimensional subspace than the ambient space).
 
 ## Usage
 

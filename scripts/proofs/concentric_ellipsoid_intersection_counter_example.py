@@ -7,7 +7,7 @@ import inertial_params as ip
 import IPython
 
 C = roty(-np.pi / 4)
-box = ip.AxisAlignedBox(half_extents=[1, 0.5, 0.5], center=[0, 0, 0])
+box = ip.Box(half_extents=[1, 0.5, 0.5], center=[0, 0, 0])
 ell1 = ip.maximum_inscribed_ellipsoid(box.vertices)
 ell2 = ell1.transform(C=C)
 

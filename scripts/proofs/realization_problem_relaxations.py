@@ -118,7 +118,7 @@ def main():
 
     # box
     half_extents = 0.5 * np.ones(3)
-    box = ip.AxisAlignedBox(half_extents)
+    box = ip.Box(half_extents)
 
     # sample a random polyhedron with masses
     # masses = np.random.random(n) + 1e-8  # avoid any possibility of zero mass
@@ -144,7 +144,7 @@ def main2():
 
     # box
     half_extents = 0.5 * np.ones(3)
-    box = ip.AxisAlignedBox(half_extents)
+    box = ip.Box(half_extents)
 
     vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
     masses = np.ones(3) / 3

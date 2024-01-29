@@ -53,7 +53,7 @@ class RobotModel:
             center = geom.placement.translation
             assert np.allclose(geom.placement.rotation, np.eye(3))
             half_extents = geom.geometry.halfSide
-            box = ip.AxisAlignedBox(half_extents=half_extents, center=center)
+            box = ip.Box(half_extents=half_extents, center=center)
 
             # remove trailing number from the geometry names
             name = "_".join(geom.name.split("_")[:-1])

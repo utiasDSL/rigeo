@@ -234,7 +234,7 @@ def main():
         vertices = data["vertices"][i]
 
         if USE_BOUNDING_BOX:
-            box = ip.AxisAlignedBox.from_points_to_bound(vertices)
+            box = ip.Box.from_points_to_bound(vertices)
             vertices = box.vertices
             grid = box.grid(n=DISC_GRID_SIZE)
         else:

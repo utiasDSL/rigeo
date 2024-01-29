@@ -65,7 +65,7 @@ def main():
 
     h = 0.5
     half_extents = h * np.ones(3)
-    box = ip.AxisAlignedBox(half_extents)
+    box = ip.Box(half_extents)
     vertices = box.vertices
     n = vertices.shape[0]
 

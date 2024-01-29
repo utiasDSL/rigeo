@@ -16,7 +16,7 @@ def cuboid_inertia_matrix(mass, half_extents):
 
 def cuboid_vertices_inertia_matrix(mass, half_extents):
     """Inertia matrix for a set of equal-mass points at the vertices of a cuboid."""
-    points = geom.AxisAlignedBox(half_extents).vertices
+    points = geom.Box(half_extents).vertices
     masses = np.ones(8) / 8
     return point_mass_system_inertia(masses, points)[1]
 

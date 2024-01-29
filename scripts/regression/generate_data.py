@@ -136,7 +136,7 @@ def main():
     qds = np.pi * (np.random.random((NUM_TRAJ, model.nq)) - 0.5)
     timescaling = ip.QuinticTimeScaling(duration=DURATION / NUM_TRAJ)
 
-    bounding_box = ip.AxisAlignedBox.cube(BOUNDING_BOX_HALF_EXTENT, center=OFFSET)
+    bounding_box = ip.Box.cube(BOUNDING_BOX_HALF_EXTENT, center=OFFSET)
 
     obj_data = []
     param_data = []
@@ -161,7 +161,7 @@ def main():
             all_params = []
             all_vertices = []
             for j in range(NUM_PRIMITIVES):
-                box = ip.AxisAlignedBox.from_two_vertices(
+                box = ip.Box.from_two_vertices(
                     points[j, 0, :], points[j, 1, :]
                 )
                 all_vertices.append(box.vertices)

@@ -45,7 +45,7 @@ def main():
     np.set_printoptions(precision=6, suppress=True)
 
     half_extents = 0.5 * np.ones(3)
-    vertices = ip.AxisAlignedBox(half_extents).vertices
+    vertices = ip.Box(half_extents).vertices
     n = vertices.shape[0]
     Vs = np.array([np.outer(v, v) for v in vertices])
     vs = np.array([ip.vech(V) for V in Vs])

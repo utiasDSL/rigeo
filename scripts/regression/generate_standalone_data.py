@@ -154,8 +154,8 @@ def main():
     )
     args = parser.parse_args()
 
-    # bounding_box = ip.AxisAlignedBox.cube(BOUNDING_BOX_HALF_EXTENT, center=OFFSET)
-    bounding_box = ip.AxisAlignedBox(BOUNDING_BOX_HALF_EXTENTS, center=OFFSET)
+    # bounding_box = ip.Box.cube(BOUNDING_BOX_HALF_EXTENT, center=OFFSET)
+    bounding_box = ip.Box(BOUNDING_BOX_HALF_EXTENTS, center=OFFSET)
 
     obj_data_full = []
     obj_data_planar = []
@@ -184,7 +184,7 @@ def main():
             all_params = []
             all_vertices = []
             for j in range(num_primitives):
-                box = ip.AxisAlignedBox.from_two_vertices(
+                box = ip.Box.from_two_vertices(
                     points[j, 0, :], points[j, 1, :]
                 )
                 all_vertices.append(box.vertices)

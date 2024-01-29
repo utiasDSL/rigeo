@@ -11,6 +11,8 @@ from inertial_params.random import random_weight_vectors
 
 
 class SpanForm:
+    """Span form (V-rep) of a convex polyhedron."""
+
     def __init__(self, vertices):
         self.vertices = np.array(vertices)
 
@@ -28,6 +30,9 @@ class SpanForm:
         vertices = M[:, 1:]
         return cls(vertices)
 
+    def __repr__(self):
+        return f"SpanForm(vertices={self.vertices})"
+
     def to_face_form(self):
         # span form
         n = self.vertices.shape[0]
@@ -43,6 +48,8 @@ class SpanForm:
 
 
 class FaceForm:
+    """Face form (H-rep) of a convex polyhedron."""
+
     def __init__(self, A_ineq, b_ineq, A_eq=None, b_eq=None):
         self.A_ineq = A_ineq
         self.b_ineq = b_ineq
@@ -263,10 +270,10 @@ class ConvexPolyhedron:
 
         Returns
         -------
-        : AxisAlignedBox
+        : Box
             The axis-aligned bounding box.
         """
-        return AxisAlignedBox.from_points_to_bound(self.vertices)
+        return Box.from_points_to_bound(self.vertices)
 
     def grid(self, n):
         """Generate a regular grid inside the polyhedron.
@@ -337,7 +344,7 @@ def _box_vertices(half_extents, center, rotation):
     return (rotation @ v.T).T + center
 
 
-class AxisAlignedBox(ConvexPolyhedron):
+class Box(ConvexPolyhedron):
     """A box aligned with the x, y, z axes.
 
     Parameters
@@ -459,9 +466,7 @@ class AxisAlignedBox(ConvexPolyhedron):
             orn = rotation @ orn
         if translation is not None:
             center += translation
-        return AxisAlignedBox(
-            half_extents=self.half_extents.copy(), center=center, rotation=orn
-        )
+        return Box(half_extents=self.half_extents.copy(), center=center, rotation=orn)
 
     def rotate_about_center(self, rotation):
         """Rotate the box about its center point.
@@ -473,15 +478,13 @@ class AxisAlignedBox(ConvexPolyhedron):
 
         Returns
         -------
-        : AxisAlignedBox
+        : Box
             A new box that has been rotated about its center point.
         """
         rotation = rotation @ self.rotation
         center = self.center.copy()
         half_extents = self.half_extents.copy()
-        return AxisAlignedBox(
-            half_extents=half_extents, center=center, rotation=rotation
-        )
+        return Box(half_extents=half_extents, center=center, rotation=rotation)
 
 
 class Cylinder:

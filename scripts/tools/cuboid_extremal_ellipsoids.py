@@ -5,7 +5,7 @@ import inertial_params as ip
 
 def main():
     cuboid_half_extents = 0.5 * np.array([0.1, 0.1, 0.4])
-    box = ip.AxisAlignedBox(cuboid_half_extents)
+    box = ip.Box(cuboid_half_extents)
     ell_outer = ip.minimum_bounding_ellipsoid(box.vertices)
     ell_inner = ip.maximum_inscribed_ellipsoid(box.vertices)
 

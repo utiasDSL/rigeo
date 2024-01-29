@@ -13,7 +13,7 @@ def test_cube_at_origin():
     N = 1000  # number of trials
     n = 10  # number of point masses per trial
 
-    box = ip.AxisAlignedBox(half_extents=[0.5, 0.5, 0.5])
+    box = ip.Box(half_extents=[0.5, 0.5, 0.5])
     Qs = Q_matrices(box)
 
     for i in range(N):
@@ -44,7 +44,7 @@ def test_cuboid_offset_from_origin():
     N = 1000  # number of trials
     n = 10  # number of point masses per trial
 
-    box = ip.AxisAlignedBox(half_extents=[1.0, 0.5, 0.1], center=[1, 1, 0])
+    box = ip.Box(half_extents=[1.0, 0.5, 0.1], center=[1, 1, 0])
     Qs = Q_matrices(box)
 
     for i in range(N):

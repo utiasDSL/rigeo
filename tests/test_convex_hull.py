@@ -46,13 +46,13 @@ def test_allclose_unordered():
 
 def test_conv_hull_cube():
     half_extents = 0.5 * np.ones(3)
-    points = ip.AxisAlignedBox(half_extents).vertices
+    points = ip.Box(half_extents).vertices
     vertices = ip.convex_hull(points)
     assert allclose_unordered(vertices, points)
 
     # generate some random points inside the hull
     np.random.seed(0)
-    extras = ip.AxisAlignedBox(half_extents).random_points(10)
+    extras = ip.Box(half_extents).random_points(10)
     points_extra = np.vstack((points, extras))
     vertices = ip.convex_hull(points_extra)
     assert allclose_unordered(vertices, points)
