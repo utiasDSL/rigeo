@@ -10,6 +10,46 @@ from scipy.spatial import ConvexHull
 from inertial_params.random import random_weight_vectors
 
 
+# TODO add face to span form
+def _polyhedron_span_to_face_form(vertices):
+    """Convert a set of vertices to a set of linear inequalities Ax <= b."""
+    # span form
+    n = vertices.shape[0]
+    Smat = cdd.Matrix(np.hstack((np.ones((n, 1)), vertices)))
+    Smat.rep_type = cdd.RepType.GENERATOR
+
+    # polyhedron
+    poly = cdd.Polyhedron(Smat)
+
+    # general face form is Ax <= b, which cdd stores as one matrix [b -A]
+    Fmat = poly.get_inequalities()
+    F = np.array([Fmat[i] for i in range(Fmat.row_size)])
+    b = F[:, 0]
+    A = -F[:, 1:]
+    return A, b
+
+
+def _polyhedron_face_to_span_form(A, b):
+    S = np.hstack((b[:, None], -A))
+    Smat = cdd.Matrix(S)
+    Smat.rep_type = cdd.RepType.INEQUALITY
+
+    poly = cdd.Polyhedron(Smat)
+
+    Fmat = poly.get_generators()
+    F = np.array([Fmat[i] for i in range(Fmat.row_size)])
+    if Fmat.row_size == 0:
+        return None
+
+    # we are assuming a closed polyhedron, so there are no rays
+    t = F[:, 0]
+    assert np.allclose(t, 1.0)
+
+    # vertices
+    V = F[:, 1:]
+    return V
+
+
 class ConvexPolyhedron:
     """A convex polyhedron in ``dim`` dimensions.
 
@@ -38,7 +78,7 @@ class ConvexPolyhedron:
         self.vertices = np.array(vertices)
 
         # the normals of the polyhedron are stored in the A matrix
-        self.A, self.b = polyhedron_span_to_face_form(vertices)
+        self.A, self.b = _polyhedron_span_to_face_form(vertices)
 
     def __repr__(self):
         return f"ConvexPolyhedron(vertices={self.vertices})"
@@ -71,7 +111,24 @@ class ConvexPolyhedron:
         """
         points = np.atleast_2d(points)
         c = self.A @ points.T <= np.tile(self.b, (points.shape[0], 1)).T + tol
-        return np.array(np.product(c, axis=0), dtype=bool)
+        return np.all(c, axis=0)
+
+    def contains_polyhedron(self, other, tol=1e-8):
+        """Test if this polyhedron contains another one.
+
+        Parameters
+        ----------
+        other : ConvexPolyhedron
+            The other polyhedron to check.
+        tol : float, non-negative
+            The numerical tolerance for membership.
+
+        Returns
+        -------
+        : bool
+            ``True`` if this polyhedron contains the other, ``False`` otherwise.
+        """
+        return self.contains(other.vertices, tol=tol).all()
 
     def random_points(self, shape=1):
         """Generate random points contained in the polyhedron.
@@ -123,6 +180,485 @@ class ConvexPolyhedron:
         contained = self.contains(box_grid)
         return box_grid[contained, :]
 
+    def minimum_bounding_ellipsoid(self, rcond=None):
+        """Construct the minimum-volume bounding ellipsoid for this polyhedron."""
+        return minimum_bounding_ellipsoid(self.vertices, rcond=rcond)
+
+    def maximum_inscribed_ellipsoid(self, rcond=None):
+        """Construct the maximum-volume ellipsoid inscribed in this polyhedron."""
+        return maximum_inscribed_ellipsoid(self.vertices, rcond=rcond)
+
+    def intersect(self, other):
+        """Intersect this polyhedron with another one.
+
+        Parameters
+        ----------
+        other : ConvexPolyhedron
+            The other polyhedron.
+
+        Returns
+        -------
+        : ConvexPolyhedron or None
+            The intersection, which is another ``ConvexPolyhedron``, or
+            ``None`` if the two polyhedra do not intersect.
+        """
+        assert isinstance(other, ConvexPolyhedron)
+
+        A = np.vstack((self.A, other.A))
+        b = np.concatenate((self.b, other.b))
+        V = _polyhedron_face_to_span_form(A, b)
+        if V is None:
+            return None
+        return ConvexPolyhedron(vertices=V)
+
+
+def _box_vertices(half_extents, center, rotation):
+    """Generate the vertices of an oriented box."""
+    x, y, z = half_extents
+    v = np.array(
+        [
+            [x, y, z],
+            [x, y, -z],
+            [x, -y, z],
+            [x, -y, -z],
+            [-x, y, z],
+            [-x, y, -z],
+            [-x, -y, z],
+            [-x, -y, -z],
+        ]
+    )
+    return (rotation @ v.T).T + center
+
+
+class AxisAlignedBox(ConvexPolyhedron):
+    """A box aligned with the x, y, z axes.
+
+    Parameters
+    ----------
+    half_extents :
+        The (x, y, z) half extents of the box. The half extents are each half
+        the length of the corresponding side lengths.
+    center :
+        The center of the box. Defaults to the origin.
+
+    Attributes
+    ----------
+    half_extents :
+        The (x, y, z) half extents of the box.
+    center :
+        The center of the box.
+    """
+
+    def __init__(self, half_extents, center=None, rotation=None):
+        self.half_extents = np.array(half_extents)
+        assert self.half_extents.shape == (3,)
+        assert np.all(self.half_extents >= 0)
+
+        if center is None:
+            center = np.zeros(3)
+        self.center = np.array(center)
+
+        if rotation is None:
+            rotation = np.eye(3)
+        self.rotation = np.array(rotation)
+        assert self.rotation.shape == (3, 3)
+
+        vertices = _box_vertices(self.half_extents, self.center, self.rotation)
+        super().__init__(vertices)
+
+    @classmethod
+    def cube(cls, half_extent, center=None, rotation=None):
+        """Construct a cube."""
+        assert half_extent >= 0
+        half_extents = half_extent * np.ones(3)
+        return cls(half_extents, center=center, rotation=rotation)
+
+    @classmethod
+    def from_side_lengths(cls, side_lengths, center=None, rotation=None):
+        """Construct a box with given side lengths."""
+        return cls(0.5 * side_lengths, center=center, rotation=rotation)
+
+    @classmethod
+    def from_two_vertices(cls, v1, v2):
+        """Construct an axis-aligned box from two opposed vertices."""
+        center = 0.5 * (v1 + v2)
+        half_extents = 0.5 * (np.maximum(v1, v2) - np.minimum(v1, v2))
+        return cls(half_extents, center=center)
+
+    @classmethod
+    def from_points_to_bound(cls, points):
+        """Construct the smallest axis-aligned box that contains all of the points."""
+        v_min = np.min(points, axis=0)
+        v_max = np.max(points, axis=0)
+        return cls.from_two_vertices(v_min, v_max)
+
+    def __repr__(self):
+        return f"Box(half_extents={self.half_extents}, center={self.center}, rotation={self.rotation})"
+
+    @property
+    def side_lengths(self):
+        """The side lengths of the box."""
+        return 2 * self.half_extents
+
+    @property
+    def volume(self):
+        """The volume of the box."""
+        return np.product(self.side_lengths)
+
+    def grid(self, n):
+        """Generate a set of points evenly spaced in the box.
+
+        Parameters
+        ----------
+        n : int
+            The number of points in each of the three dimensions.
+
+        Returns
+        -------
+        :
+            An array of points with shape ``(n**3, 3)``.
+        """
+        L = -self.half_extents
+        U = self.half_extents
+
+        x = np.linspace(L[0], U[0], n)
+        y = np.linspace(L[1], U[1], n)
+        z = np.linspace(L[2], U[2], n)
+
+        # TODO this is inefficient
+        points = []
+        for i in range(n):
+            for j in range(n):
+                for k in range(n):
+                    point = self.rotation @ [x[i], y[j], z[k]] + self.center
+                    points.append(point)
+        return np.array(points)
+
+    def as_ellipsoidal_intersection(self):
+        """Construct a set of ellipsoids, the intersection of which is the box."""
+        r1, r2, r3 = self.half_extents
+        A1 = self.rotation @ np.diag([1.0 / r1**2, 0, 0]) @ self.rotation.T
+        A2 = self.rotation @ np.diag([0, 1.0 / r2**2, 0]) @ self.rotation.T
+        A3 = self.rotation @ np.diag([0, 0, 1.0 / r3**2]) @ self.rotation.T
+        return [Ellipsoid(A, self.center) for A in [A1, A2, A3]]
+
+    def transform(self, translation=None, rotation=None):
+        """Apply a rigid transformation to the box."""
+        center = self.center.copy()
+        orn = self.rotation.copy()
+
+        if rotation is not None:
+            center = rotation @ center
+            orn = rotation @ orn
+        if translation is not None:
+            center += translation
+        return AxisAlignedBox(
+            half_extents=self.half_extents.copy(), center=center, rotation=orn
+        )
+
+    def rotate_about_center(self, rotation):
+        """Rotate the box about its center point.
+
+        Parameters
+        ----------
+        rotation : np.ndarray, shape (3, 3)
+            Rotation matrix.
+
+        Returns
+        -------
+        : AxisAlignedBox
+            A new box that has been rotated about its center point.
+        """
+        rotation = rotation @ self.rotation
+        center = self.center.copy()
+        half_extents = self.half_extents.copy()
+        return AxisAlignedBox(
+            half_extents=half_extents, center=center, rotation=rotation
+        )
+
+
+class Cylinder:
+    """A cylinder in three dimensions.
+
+    Parameters
+    ----------
+    length : float, positive
+        The length along the longitudinal axis.
+    radius : float, positive
+        The radius of the cross-section.
+    axis : np.ndarray, shape (3,)
+        The main axis. If not provided, defaults to ``[0, 0, 1]``. The axis is
+        normalized to unit length.
+    center : np.ndarray, shape (3,)
+        The center of the cylinder. If not provided, defaults to the origin.
+    """
+
+    def __init__(self, length, radius, axis=None, center=None):
+        assert length > 0
+        assert radius > 0
+
+        if axis is None:
+            axis = np.array([0, 0, 1])
+        else:
+            axis = np.array(axis) / np.linalg.norm(axis)
+        self.axis = axis
+        self.length = length
+        self.radius = radius
+
+        if center is None:
+            center = np.zeros_like(axis)
+        self.center = np.array(center)
+
+        self.U = null_space(self.axis[None, :])
+
+    def as_ellipsoidal_intersection(self):
+        """Construct a set of ellipsoids, the intersection of which is the cylinder."""
+        # TODO probably just make these properties of the cylinder
+        A1 = 4 * np.outer(self.axis, self.axis) / self.length**2
+        A2 = self.U @ self.U.T / self.radius**2
+        return [Ellipsoid(A, self.center) for A in [A1, A2]]
+
+    def contains(self, points, tol=1e-8):
+        """Check if points are contained in the ellipsoid.
+
+        Parameters
+        ----------
+        points : iterable
+            Points to check. May be a single point or a list or array of points.
+        tol : float, non-negative
+            Numerical tolerance for qualifying as inside the ellipsoid.
+
+        Returns
+        -------
+        :
+            Given a single point, return ``True`` if the point is contained in
+            the ellipsoid, or ``False`` if not. For multiple points, return a
+            boolean array with one value per point.
+        """
+        points = np.atleast_2d(points)
+        xs = points - self.center
+        contained_lengthwise = np.abs(xs @ self.axis) <= self.length / 2
+        contained_transverse = np.array(
+            [x @ self.U @ self.U.T @ x <= self.radius**2 for x in xs], dtype=bool
+        )
+        assert contained_lengthwise.shape == contained_transverse.shape
+        contained = np.logical_and(contained_lengthwise, contained_transverse)
+        return np.squeeze(contained)
+
+    def inscribed_box(self):
+        # TODO once box has rotation information
+        pass
+
+    def bounding_box(self):
+        pass
+
+
+# TODO rename c -> center, possibly rename Einv also
+class Ellipsoid:
+    """Ellipsoid with a variety of representations."""
+
+    def __init__(self, Einv, center=None):
+        assert Einv.ndim == 2
+        assert Einv.shape[0] == Einv.shape[1]
+        self.Einv = Einv
+        self.dim = self.Einv.shape[0]
+
+        if center is None:
+            center = np.zeros(self.dim)
+        self.center = np.array(center)
+
+        self.rank = np.linalg.matrix_rank(self.Einv)
+
+    def __repr__(self):
+        return f"Ellipsoid(center={self.center}, Einv={self.Einv})"
+
+    @classmethod
+    def sphere(cls, radius, center=None, dim=None):
+        """Construct a sphere.
+
+        Parameters
+        ----------
+        radius : float
+            Radius of the sphere.
+        center : iterable
+            Optional center point of the sphere.
+        dim : int
+            Dimension of the sphere. Only required if ``center`` not provided,
+            in which case the sphere is centered at the origin. If neither
+            ``center`` or ``dim`` is provided, defaults to a 3D sphere at the
+            origin.
+        """
+        if center is None:
+            if dim is None:
+                dim = 3
+            center = np.zeros(dim)
+        else:
+            center = np.array(center)
+        assert center.shape == (dim,)
+
+        Einv = np.eye(dim) / radius**2
+        return cls(Einv=Einv, center=center)
+
+    @classmethod
+    def from_half_extents(cls, half_extents, center=None):
+        """Construct an ellipsoid from its half extents, which are the lengths
+        of the semi-major axes.
+
+        Parameters
+        ----------
+        half_extents : np.ndarray, shape (d,)
+            The lengths of the semi-major axes, where ``d`` is the dimension.
+        center : np.ndarray, shape (d,)
+            Optional center point of the ellipsoid.
+        """
+        half_extents = np.array(half_extents)
+        Einv = np.diag(1.0 / half_extents**2)
+        return cls(Einv=Einv, center=center)
+
+    @classmethod
+    def from_Ab(cls, A, b, rcond=None):
+        Einv = A @ A
+
+        # use least squares instead of direct solve in case we have a
+        # degenerate ellipsoid
+        center = np.linalg.lstsq(A, -b, rcond=rcond)[0]
+        return cls(Einv=Einv, center=center)
+
+    @classmethod
+    def from_Q(cls, Q):
+        assert Q.shape[0] == Q.shape[1]
+        dim = Q.shape[0] - 1
+        Einv = -Q[:dim, :dim]
+        q = Q[:dim, dim]
+        center = np.linalg.solve(Einv, q)
+        return cls(Einv=Einv, center=center)
+
+    def axes(self):
+        """Compute axes directions and semi-axes values."""
+        e, V = np.linalg.eig(self.Einv)
+        r = 1 / np.sqrt(e)
+        return r, V
+
+    @property
+    def A(self):
+        """``A`` from ``(A, b)`` representation of the ellipsoid.
+
+        .. math::
+           \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\|Ax+b\\|^2\\leq 1\\}
+        """
+        return sqrtm(self.Einv)
+
+    @property
+    def b(self):
+        """``b`` from ``(A, b)`` representation of the ellipsoid.
+
+        .. math::
+           \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\|Ax+b\\|^2\\leq 1\\}
+        """
+        return -self.A @ self.center
+
+    @property
+    def Q(self):
+        """Q representation of the ellipsoid.
+
+        .. math::
+           \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\tilde{x}^TQ\\tilde{q}\\geq 0\\}
+        """
+
+        Q = np.zeros((self.dim + 1, self.dim + 1))
+        Q[: self.dim, : self.dim] = -self.Einv
+        Q[: self.dim, self.dim] = self.Einv @ self.center
+        Q[self.dim, : self.dim] = Q[: self.dim, self.dim]
+        Q[self.dim, self.dim] = 1 - self.center @ self.Einv @ self.center
+        return Q
+
+    def degenerate(self):
+        """Check if the ellipsoid is degenerate.
+
+        This means that it has zero volume, and lives in a lower dimension than
+        the ambient one.
+
+        Returns
+        -------
+        : bool
+            Returns ``True`` if the ellipsoid is degenerate, ``False`` otherwise.
+        """
+        return self.rank < self.dim
+
+    def contains(self, points, tol=1e-8):
+        """Check if points are contained in the ellipsoid.
+
+        Parameters
+        ----------
+        points : iterable
+            Points to check. May be a single point or a list or array of points.
+        tol : float, non-negative
+            Numerical tolerance for qualifying as inside the ellipsoid.
+
+        Returns
+        -------
+        :
+            Given a single point, return ``True`` if the point is contained in
+            the ellipsoid, or ``False`` if not. For multiple points, return a
+            boolean array with one value per point.
+        """
+        points = np.array(points)
+        if points.ndim == 1:
+            p = points - self.center
+            return p @ self.Einv @ p <= 1 + tol
+        elif points.ndim == 2:
+            ps = points - self.center
+            return np.array([p @ self.Einv @ p <= 1 + tol for p in ps])
+        else:
+            raise ValueError(
+                f"points must have 1 or 2 dimensions, but has {points.ndim}."
+            )
+
+    def transform(self, rotation=None, translation=None):
+        """Apply an affine transform to the ellipsoid.
+
+        Parameters
+        ----------
+        rotation : np.ndarray, shape (d, d)
+            Rotation matrix.
+        translation : np.ndarray, shape (d,)
+            Translation vector.
+
+        Returns
+        -------
+        : Ellipsoid
+            A new ellipsoid that has been rigidly transformed.
+        """
+        if rotation is None and translation is None:
+            return Ellipsoid(Einv=self.Einv.copy(), center=self.center.copy())
+
+        if rotation is None:
+            dim = translation.shape[0]
+            rotation = np.eye(dim)
+        if translation is None:
+            dim = rotation.shape[0]
+            translation = np.zeros(dim)
+
+        Einv = rotation @ self.Einv @ rotation.T
+        center = rotation @ self.center + translation
+        return Ellipsoid(Einv=Einv, center=center)
+
+    def rotate_about_center(self, rotation):
+        """Rotate the ellipsoid about its center point.
+
+        Parameters
+        ----------
+        rotation : np.ndarray, shape (d, d)
+            Rotation matrix.
+
+        Returns
+        -------
+        : Ellipsoid
+            A new ellipsoid that has been rigidly transformed.
+        """
+        Einv = rotation @ self.Einv @ rotation.T
+        return Ellipsoid(Einv=Einv, center=self.center.copy())
+
 
 def convex_hull(points, rcond=None):
     """Get the vertices of the convex hull of a set of points.
@@ -158,410 +694,6 @@ def convex_hull(points, rcond=None):
 
     # unproject
     return H @ R.T
-
-
-# TODO add face to span form
-def polyhedron_span_to_face_form(vertices):
-    """Convert a set of vertices to a set of linear inequalities A <= b."""
-    # span form
-    n = vertices.shape[0]
-    Smat = cdd.Matrix(np.hstack((np.ones((n, 1)), vertices)))
-    Smat.rep_type = cdd.RepType.GENERATOR
-
-    # polyhedron
-    poly = cdd.Polyhedron(Smat)
-
-    # general face form is Ax <= b, which cdd stores as one matrix [b -A]
-    Fmat = poly.get_inequalities()
-    F = np.array([Fmat[i] for i in range(Fmat.row_size)])
-    b = F[:, 0]
-    A = -F[:, 1:]
-    return A, b
-
-
-# TODO deprecate in favour of ConvexPolyhedron.grid
-def polyhedron_grid(vertices, n):
-    """Generate a regular grid inside a convex polyhedron.
-
-    The approach is to compute the axis-aligned bounding box, generate a grid
-    for that, and then discard any points not inside the actual polyhedron.
-
-    Parameters
-    ----------
-    vertices :
-        The vertices of the polyhedron.
-    n :
-        The maximum number of points along each dimension.
-
-    Returns
-    -------
-    :
-        An array of shape ``(N, 3)`` representing the ``N`` points in the grid.
-    """
-    bounding_box = AxisAlignedBox.from_points_to_bound(vertices)
-    box_grid = bounding_box.grid(n)
-    A, b = polyhedron_span_to_face_form(vertices)
-    contains = (A @ box_grid.T <= b[:, None]).T.all(axis=1)
-    return box_grid[contains, :]
-
-
-class AxisAlignedBox:
-    """A box aligned with the x, y, z axes.
-
-    Parameters
-    ----------
-    half_extents :
-        The (x, y, z) half extents of the box. The half extents are each half
-        the length of the corresponding side lengths.
-    center :
-        The center of the box. Defaults to the origin.
-
-    Attributes
-    ----------
-    half_extents :
-        The (x, y, z) half extents of the box.
-    center :
-        The center of the box.
-    """
-
-    def __init__(self, half_extents, center=None):
-        self.half_extents = np.array(half_extents)
-        assert self.half_extents.shape == (3,)
-        if center is None:
-            center = np.zeros(3)
-        self.center = np.array(center)
-
-    @classmethod
-    def cube(cls, half_extent, center=None):
-        half_extents = half_extent * np.ones(3)
-        return cls(half_extents, center=center)
-
-    @classmethod
-    def from_side_lengths(cls, side_lengths, center=None):
-        return cls(0.5 * side_lengths, center=center)
-
-    @classmethod
-    def from_two_vertices(cls, v1, v2):
-        center = 0.5 * (v1 + v2)
-        half_extents = 0.5 * (np.maximum(v1, v2) - np.minimum(v1, v2))
-        return cls(half_extents, center=center)
-
-    @classmethod
-    def from_points_to_bound(cls, points):
-        v_min = np.min(points, axis=0)
-        v_max = np.max(points, axis=0)
-        return cls.from_two_vertices(v_min, v_max)
-
-    def __repr__(self):
-        return f"AxisAlignedBox(center={self.center}, half_extents={self.half_extents})"
-
-    @property
-    def side_lengths(self):
-        return 2 * self.half_extents
-
-    @property
-    def vertices(self):
-        x, y, z = self.half_extents
-        return (
-            np.array(
-                [
-                    [x, y, z],
-                    [x, y, -z],
-                    [x, -y, z],
-                    [x, -y, -z],
-                    [-x, y, z],
-                    [-x, y, -z],
-                    [-x, -y, z],
-                    [-x, -y, -z],
-                ]
-            )
-            + self.center
-        )
-
-    def random_points(self, shape=1):
-        """Generate a set of random points contained in the box."""
-        d = self.half_extents.shape[0]
-        if type(shape) is int:
-            shape = (shape,)
-        shape = shape + (d,)
-
-        points = self.half_extents * (2 * np.random.random(shape) - 1) + self.center
-        if shape == (1, d):
-            return points.flatten()
-        return points
-
-    def contains(self, points, tol=1e-8):
-        """Test if the box contains a set of points."""
-        points = np.atleast_2d(points)
-        return (np.abs(points - self.center) <= self.half_extents + tol).all(axis=1)
-
-    def grid(self, n):
-        """Generate a set of points evenly spaced in the box.
-
-        Parameters
-        ----------
-        n : int
-            The number of points in each of the three dimensions.
-
-        Returns
-        -------
-        :
-            An array of points with shape ``(n**3, 3)``.
-        """
-        L = self.center - self.half_extents
-        U = self.center + self.half_extents
-
-        x = np.linspace(L[0], U[0], n)
-        y = np.linspace(L[1], U[1], n)
-        z = np.linspace(L[2], U[2], n)
-
-        points = []
-        for i in range(n):
-            for j in range(n):
-                for k in range(n):
-                    points.append([x[i], y[j], z[k]])
-        return np.array(points)
-
-    def as_ellipsoidal_intersection(self):
-        r1, r2, r3 = self.half_extents
-        A1 = np.diag([1.0 / r1**2, 0, 0])
-        A2 = np.diag([0, 1.0 / r2**2, 0])
-        A3 = np.diag([0, 0, 1.0 / r3**2])
-        return [Ellipsoid(A, self.center) for A in [A1, A2, A3]]
-
-
-class Cylinder:
-    def __init__(self, length, radius, axis=None, center=None):
-        assert length > 0
-        assert radius > 0
-
-        if axis is None:
-            axis = np.array([0, 0, 1])
-        else:
-            axis = np.array(axis) / np.linalg.norm(axis)
-        self.axis = axis
-        self.length = length
-        self.radius = radius
-
-        if center is None:
-            center = np.zeros_like(axis)
-        self.center = np.array(center)
-
-        self.U = null_space(self.axis[None, :])
-
-    def as_ellipsoidal_intersection(self):
-        # TODO probably just make these properties of the cylinder
-        A1 = 4 * np.outer(self.axis, self.axis) / self.length**2
-        A2 = self.U @ self.U.T / self.radius**2
-        return [Ellipsoid(A, self.center) for A in [A1, A2]]
-
-    def contains(self, points, tol=1e-8):
-        points = np.atleast_2d(points)
-        xs = points - self.center
-        contained_lengthwise = np.abs(xs @ self.axis) <= self.length / 2
-        contained_transverse = np.array(
-            [x @ self.U @ self.U.T @ x <= self.radius**2 for x in xs], dtype=bool
-        )
-        assert contained_lengthwise.shape == contained_transverse.shape
-        return np.logical_and(contained_lengthwise, contained_transverse)
-
-    def inscribed_box(self):
-        # TODO once box has rotation information
-        pass
-
-    def bounding_box(self):
-        pass
-
-
-# TODO rename c -> center, possibly rename Einv also
-class Ellipsoid:
-    """Ellipsoid with a variety of representations."""
-
-    def __init__(self, Einv, c):
-        assert Einv.ndim == 2
-        assert Einv.shape[0] == Einv.shape[1]
-        assert Einv.shape[0] == c.shape[0]
-
-        self.Einv = Einv
-        self.c = c
-        self.dim = c.shape[0]
-        self.rank = np.linalg.matrix_rank(Einv)
-
-    def __repr__(self):
-        return f"Ellipsoid(center={self.c}, Einv={self.Einv})"
-
-    @classmethod
-    def sphere(cls, radius, center=None, dim=None):
-        """Construct a sphere.
-
-        Parameters
-        ----------
-        radius : float
-            Radius of the sphere.
-        center : iterable
-            Optional center point of the sphere.
-        dim : int
-            Dimension of the sphere. Only required if ``center`` not provided,
-            in which case the sphere is centered at the origin. If neither
-            ``center`` or ``dim`` is provided, defaults to a 3D sphere at the
-            origin.
-        """
-        if center is None:
-            if dim is None:
-                dim = 3
-            center = np.zeros(dim)
-        else:
-            center = np.array(center)
-        assert center.shape == (dim,)
-
-        Einv = np.eye(dim) / radius**2
-        return cls(Einv=Einv, c=center)
-
-    @classmethod
-    def from_half_extents(cls, half_extents, center=None):
-        """Construct an ellipsoid from its half extents, which are the lengths
-        of the semi-major axes.
-
-        Parameters
-        ----------
-        half_extents : np.ndarray, shape (n,)
-            The lengths of the semi-major axes, where ``n`` is the dimension.
-        center : np.ndarray, shape (n,)
-            Optional center point of the ellipsoid.
-        """
-        half_extents = np.array(half_extents)
-        Einv = np.diag(1.0 / half_extents**2)
-        if center is None:
-            center = np.zeros_like(half_extents)
-        return cls(Einv=Einv, c=center)
-
-    @classmethod
-    def from_Ab(cls, A, b, rcond=None):
-        Einv = A @ A
-
-        # use least squares instead of direct solve in case we have a
-        # degenerate ellipsoid
-        c = np.linalg.lstsq(A, -b, rcond=rcond)[0]
-        return cls(Einv=Einv, c=c)
-
-    @classmethod
-    def from_Q(cls, Q):
-        assert Q.shape[0] == Q.shape[1]
-        dim = Q.shape[0] - 1
-        Einv = -Q[:dim, :dim]
-        q = Q[:dim, dim]
-        c = np.linalg.solve(Einv, q)
-        return cls(Einv=Einv, c=c)
-
-    def axes(self):
-        """Compute axes directions and semi-axes values."""
-        e, V = np.linalg.eig(self.Einv)
-        r = 1 / np.sqrt(e)
-        return r, V
-
-    @property
-    def A(self):
-        """``A`` from ``(A, b)`` representation of the ellipsoid.
-
-        .. math::
-           \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\|Ax+b\\|^2\\leq 1\\}
-        """
-        return sqrtm(self.Einv)
-
-    @property
-    def b(self):
-        """``b`` from ``(A, b)`` representation of the ellipsoid.
-
-        .. math::
-           \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\|Ax+b\\|^2\\leq 1\\}
-        """
-        return -self.A @ self.c
-
-    @property
-    def Q(self):
-        """Q representation of the ellipsoid.
-
-        .. math::
-           \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\tilde{x}^TQ\\tilde{q}\\geq 0\\}
-        """
-
-        Q = np.zeros((self.dim + 1, self.dim + 1))
-        Q[: self.dim, : self.dim] = -self.Einv
-        Q[: self.dim, self.dim] = self.Einv @ self.c
-        Q[self.dim, : self.dim] = Q[: self.dim, self.dim]
-        Q[self.dim, self.dim] = 1 - self.c @ self.Einv @ self.c
-        return Q
-
-    def degenerate(self):
-        """Check if the ellipsoid is degenerate.
-
-        This means that it has zero volume, and lives in a lower dimension than
-        the ambient one.
-
-        Returns
-        -------
-        : bool
-            Returns ``True`` if the ellipsoid is degenerate, ``False`` otherwise.
-        """
-        return self.rank < self.dim
-
-    def contains(self, points, tol=1e-8):
-        """Check if points are contained in the ellipsoid.
-
-        Parameters
-        ----------
-        points : iterable
-            Points to check. May be a single point or a list or array of points.
-        tol : float, non-negative
-            Numerical tolerance for qualifying as inside the ellipsoid.
-
-        Returns
-        -------
-        :
-            Given a single point, return ``True`` if the point is contained in
-            the ellipsoid, or ``False`` if not. For multiple points, return a
-            boolean array with one value per point.
-        """
-        points = np.array(points)
-        if points.ndim == 1:
-            p = points - self.c
-            return p @ self.Einv @ p <= 1 + tol
-        elif points.ndim == 2:
-            ps = points - self.c
-            return np.array([p @ self.Einv @ p <= 1 + tol for p in ps])
-        else:
-            raise ValueError(
-                f"points must have 1 or 2 dimensions, but has {points.ndim}."
-            )
-
-    def transform(self, C=None, r=None):
-        """Apply an affine transform to the ellipsoid.
-
-        Parameters
-        ----------
-        C :
-            Rotation matrix.
-        r :
-            Translation vector.
-
-        Returns
-        -------
-        : Ellipsoid
-            A new ellipsoid that is an affine transform of this one.
-        """
-        if C is None and r is None:
-            return Ellipsoid(Einv=self.Einv.copy(), c=self.c.copy())
-
-        if C is None:
-            dim = r.shape[0]
-            C = np.eye(dim)
-        if r is None:
-            dim = C.shape[0]
-            r = np.zeros(dim)
-
-        Einv = C @ self.Einv @ C.T
-        c = self.c + r
-        return Ellipsoid(Einv=Einv, c=c)
 
 
 def cube_bounding_ellipsoid(h):
@@ -613,7 +745,6 @@ def minimum_bounding_ellipsoid(points, rcond=None):
     return Ellipsoid.from_Ab(A=A, b=b, rcond=rcond)
 
 
-# TODO this also does not handle degeneracy
 def _maximum_inscribed_ellipsoid_inequality_form(A, b):
     """Compute the maximum inscribed ellipsoid for an inequality-form
     polyhedron P = {x | Ax <= b}.
@@ -635,7 +766,7 @@ def _maximum_inscribed_ellipsoid_inequality_form(A, b):
     problem.solve(solver=cp.MOSEK)
 
     E = B.value @ B.value
-    return Ellipsoid(Einv=np.linalg.inv(E), c=c.value)
+    return Ellipsoid(Einv=np.linalg.inv(E), center=c.value)
 
 
 def maximum_inscribed_ellipsoid(vertices, rcond=None):
@@ -654,13 +785,13 @@ def maximum_inscribed_ellipsoid(vertices, rcond=None):
 
     # solve the problem a possibly lower-dimensional space where the set of
     # vertices is full-rank
-    A, b = polyhedron_span_to_face_form(P)
+    A, b = _polyhedron_span_to_face_form(P)
     ell = _maximum_inscribed_ellipsoid_inequality_form(A, b)
 
     # unproject back into the original space
     Einv = R @ ell.Einv @ R.T
-    c = R @ ell.c
-    return Ellipsoid(Einv=Einv, c=c)
+    center = R @ ell.center
+    return Ellipsoid(Einv=Einv, center=center)
 
 
 def positive_definite_distance(A, B):

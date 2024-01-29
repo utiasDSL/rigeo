@@ -12,11 +12,11 @@ def test_ellipsoid_sphere():
 
     ell2 = ip.Ellipsoid.from_Ab(A=ell.A, b=ell.b)
     assert np.allclose(ell.Einv, ell2.Einv)
-    assert np.allclose(ell.c, ell2.c)
+    assert np.allclose(ell.center, ell2.center)
 
     ell3 = ip.Ellipsoid.from_Q(Q=ell.Q)
     assert np.allclose(ell.Einv, ell3.Einv)
-    assert np.allclose(ell.c, ell3.c)
+    assert np.allclose(ell.center, ell3.center)
 
 
 def test_ellipsoid_hypersphere():
@@ -28,11 +28,11 @@ def test_ellipsoid_hypersphere():
 
     ell2 = ip.Ellipsoid.from_Ab(A=ell.A, b=ell.b)
     assert np.allclose(ell.Einv, ell2.Einv)
-    assert np.allclose(ell.c, ell2.c)
+    assert np.allclose(ell.center, ell2.center)
 
     ell3 = ip.Ellipsoid.from_Q(Q=ell.Q)
     assert np.allclose(ell.Einv, ell3.Einv)
-    assert np.allclose(ell.c, ell3.c)
+    assert np.allclose(ell.center, ell3.center)
 
 
 def test_cube_bounding_ellipsoid():
@@ -53,7 +53,7 @@ def test_cube_bounding_ellipsoid_translated():
     points += offset
 
     ell = ip.minimum_bounding_ellipsoid(points)
-    elld = ip.cube_bounding_ellipsoid(h).transform(r=offset)
+    elld = ip.cube_bounding_ellipsoid(h).transform(translation=offset)
     assert np.allclose(ell.Q, elld.Q)
 
 
@@ -66,7 +66,7 @@ def test_cube_bounding_ellipsoid_rotated():
     points = (C @ points.T).T
 
     ell = ip.minimum_bounding_ellipsoid(points)
-    elld = ip.cube_bounding_ellipsoid(h).transform(C=C)
+    elld = ip.cube_bounding_ellipsoid(h).transform(rotation=C)
     assert np.allclose(ell.Q, elld.Q)
 
 
@@ -110,7 +110,7 @@ def test_inscribed_ellipsoid_4d():
     # check that all the vertices are on the border or outside of the
     # ellipsoid
     for x in vertices:
-        assert (x - ell.c).T @ ell.Einv @ (x - ell.c) >= 1
+        assert (x - ell.center).T @ ell.Einv @ (x - ell.center) >= 1
 
 
 def test_inscribed_ellipsoid_degenerate():
@@ -121,4 +121,4 @@ def test_inscribed_ellipsoid_degenerate():
     # check that all the vertices are on the border or outside of the
     # ellipsoid
     for x in vertices:
-        assert (x - ell.c).T @ ell.Einv @ (x - ell.c) >= 1
+        assert (x - ell.center).T @ ell.Einv @ (x - ell.center) >= 1
