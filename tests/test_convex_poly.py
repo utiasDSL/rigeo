@@ -10,7 +10,7 @@ def polyhedra_same(poly1, poly2):
 
 def test_aabb():
     box = ip.AxisAlignedBox(half_extents=[0.5, 0.5, 0.5])
-    poly = ip.ConvexPolyhedron(box.vertices)
+    poly = ip.ConvexPolyhedron.from_vertices(box.vertices)
     aabb = poly.aabb()
     assert np.allclose(aabb.center, box.center)
     assert np.allclose(aabb.half_extents, box.half_extents)
@@ -20,7 +20,7 @@ def test_aabb():
 def test_contains():
     vertices = np.array([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
     nv = vertices.shape[0]
-    poly = ip.ConvexPolyhedron(vertices)
+    poly = ip.ConvexPolyhedron.from_vertices(vertices)
     assert np.all(poly.contains(vertices))
 
     # generate some random points that are contained in the polyhedron
@@ -59,8 +59,8 @@ def test_intersection():
     # face contact
     box4 = ip.AxisAlignedBox(half_extents=np.ones(3), center=[1.9, 1.9, 2])
     intersection = box1.intersect(box4)
-    expected = ip.ConvexPolyhedron(
-        vertices=np.array([[1, 1, 1], [1, 0.9, 1], [0.9, 0.9, 1], [0.9, 1, 1]])
+    expected = ip.ConvexPolyhedron.from_vertices(
+        [[1, 1, 1], [1, 0.9, 1], [0.9, 0.9, 1], [0.9, 1, 1]]
     )
     assert polyhedra_same(intersection, expected)
 

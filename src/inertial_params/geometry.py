@@ -10,78 +10,168 @@ from scipy.spatial import ConvexHull
 from inertial_params.random import random_weight_vectors
 
 
-# TODO add face to span form
-def _polyhedron_span_to_face_form(vertices):
-    """Convert a set of vertices to a set of linear inequalities Ax <= b."""
-    # span form
-    n = vertices.shape[0]
-    Smat = cdd.Matrix(np.hstack((np.ones((n, 1)), vertices)))
-    Smat.rep_type = cdd.RepType.GENERATOR
+class SpanForm:
+    def __init__(self, vertices):
+        self.vertices = np.array(vertices)
 
-    # polyhedron
-    poly = cdd.Polyhedron(Smat)
+    @classmethod
+    def from_cdd_matrix(cls, mat):
+        M = np.array([mat[i] for i in range(mat.row_size)])
+        if mat.row_size == 0:
+            return None
 
-    # general face form is Ax <= b, which cdd stores as one matrix [b -A]
-    Fmat = poly.get_inequalities()
-    F = np.array([Fmat[i] for i in range(Fmat.row_size)])
-    b = F[:, 0]
-    A = -F[:, 1:]
-    return A, b
+        # we are assuming a closed polyhedron, so there are no rays
+        t = M[:, 0]
+        assert np.allclose(t, 1.0)
+
+        # vertices
+        vertices = M[:, 1:]
+        return cls(vertices)
+
+    def to_face_form(self):
+        # span form
+        n = self.vertices.shape[0]
+        Smat = cdd.Matrix(np.hstack((np.ones((n, 1)), self.vertices)))
+        Smat.rep_type = cdd.RepType.GENERATOR
+
+        # polyhedron
+        poly = cdd.Polyhedron(Smat)
+
+        # general face form is Ax <= b, which cdd stores as one matrix [b -A]
+        Fmat = poly.get_inequalities()
+        return FaceForm.from_cdd_matrix(Fmat)
 
 
-def _polyhedron_face_to_span_form(A, b):
-    S = np.hstack((b[:, None], -A))
-    Smat = cdd.Matrix(S)
-    Smat.rep_type = cdd.RepType.INEQUALITY
+class FaceForm:
+    def __init__(self, A_ineq, b_ineq, A_eq=None, b_eq=None):
+        self.A_ineq = A_ineq
+        self.b_ineq = b_ineq
+        self.A_eq = A_eq
+        self.b_eq = b_eq
 
-    poly = cdd.Polyhedron(Smat)
+    @classmethod
+    def from_cdd_matrix(cls, mat):
+        M = np.array([mat[i] for i in range(mat.row_size)])
+        b = M[:, 0]
+        A = -M[:, 1:]
 
-    Fmat = poly.get_generators()
-    F = np.array([Fmat[i] for i in range(Fmat.row_size)])
-    if Fmat.row_size == 0:
-        return None
+        ineq_idx = np.array(
+            [idx for idx in range(mat.row_size) if idx not in mat.lin_set]
+        )
+        eq_idx = np.array([idx for idx in mat.lin_set])
 
-    # we are assuming a closed polyhedron, so there are no rays
-    t = F[:, 0]
-    assert np.allclose(t, 1.0)
+        return cls(
+            A_ineq=A[ineq_idx, :],
+            b_ineq=b[ineq_idx],
+            A_eq=A[eq_idx, :] if len(eq_idx) > 0 else None,
+            b_eq=b[eq_idx] if len(eq_idx) > 0 else None,
+        )
 
-    # vertices
-    V = F[:, 1:]
-    return V
+    @property
+    def spans_linear(self):
+        return self.A_eq is not None
+
+    def __repr__(self):
+        return f"FaceForm(A_ineq={self.A_ineq}, A_eq={self.A_eq}, b_ineq={self.b_ineq}, b_eq={self.b_eq})"
+
+    def stack(self, other):
+        """Combine two face forms together."""
+        A_ineq = np.vstack((self.A_ineq, other.A_ineq))
+        b_ineq = np.concatenate((self.b_ineq, other.b_ineq))
+
+        if self.spans_linear or other.spans_linear:
+            A_eq = np.vstack([A for A in [self.A_eq, other.A_eq] if A is not None])
+            b_eq = np.concatenate([b for b in [self.b_eq, other.b_eq] if b is not None])
+        else:
+            A_eq = None
+            b_eq = None
+
+        return FaceForm(A_ineq=A_ineq, b_ineq=b_ineq, A_eq=A_eq, b_eq=b_eq)
+
+    def to_span_form(self):
+        """Convert to span form (V-rep)."""
+        A = np.vstack([A for A in [self.A_ineq, self.A_eq] if A is not None])
+        b = np.concatenate([b for b in [self.b_ineq, self.b_eq] if b is not None])
+        lin_set = frozenset(range(self.b_ineq.shape[0], b.shape[0]))
+
+        S = np.hstack((b[:, None], -A))
+        Smat = cdd.Matrix(S)
+        Smat.lin_set = lin_set
+        Smat.rep_type = cdd.RepType.INEQUALITY
+
+        poly = cdd.Polyhedron(Smat)
+
+        Fmat = poly.get_generators()
+        return SpanForm.from_cdd_matrix(Fmat)
 
 
 class ConvexPolyhedron:
     """A convex polyhedron in ``dim`` dimensions.
 
+    The ``__init__`` method accepts either or both of the span (V-rep) and face
+    (H-rep) forms of the polyhedron. If neither is provided, an error is
+    raised. It is typically more convenient to construct the polyhedron using
+    ``from_vertices`` or ``from_halfspaces``.
+
     Parameters
     ----------
-    vertices : np.ndarray, shape (nv, dim)
-        The extremal points of the polyhedron.
-    prune_vertices : bool
-        If ``True``, the vertices will be pruned to eliminate any non-extremal
-        points.
-
-    Attributes
-    ----------
-    vertices : np.ndarray, shape (nv, dim)
-        The extremal points of the polyhedron.
-    A : np.ndarray
-        The matrix part of the face (half-space) form of the polyhedron,
-        :math:`\\{p\\in\\mathbb{R}^{dim}\\mid Ap\\leq b \\}`
-    b : np.ndarray
-        The vector part of the face form of the polyhedron.
+    face_form : FaceForm or None
+        The face form of the polyhedron.
+    span_form : SpanForm or None
+        The span form of the polyhedron.
     """
 
-    def __init__(self, vertices, prune_vertices=False):
-        if prune_vertices:
-            vertices = convex_hull(vertices)
-        self.vertices = np.array(vertices)
+    def __init__(self, face_form=None, span_form=None):
+        if face_form is None:
+            face_form = span_form.to_face_form()
+        if span_form is None:
+            span_form = face_form.to_span_form()
 
-        # the normals of the polyhedron are stored in the A matrix
-        self.A, self.b = _polyhedron_span_to_face_form(vertices)
+        self.span_form = span_form
+        self.face_form = face_form
+
+    @classmethod
+    def from_vertices(cls, vertices, prune=False):
+        """Construct the polyhedron from a set of vertices.
+
+        Parameters
+        ----------
+        vertices : np.ndarray, shape (nv, dim)
+            The extremal points of the polyhedron.
+        prune : bool
+            If ``True``, the vertices will be pruned to eliminate any non-extremal
+            points.
+        """
+        if prune:
+            vertices = convex_hull(vertices)
+        span_form = SpanForm(vertices)
+        return cls(span_form=span_form)
+
+    @classmethod
+    def from_halfspaces(cls, A, b):
+        """Construct the polyhedron from a set of halfspaces.
+
+        The polyhedron is the set {x | Ax <= b}. For degenerate cases with
+        linear *equality* constraints, use the ``__init__`` method to pass a
+        face form directly.
+
+        Parameters
+        ----------
+        A : np.ndarray
+            The matrix of halfspace normals.
+        b : np.ndarray
+            The vector of halfspace offsets.
+        """
+        face_form = FaceForm(A_ineq=A, b_ineq=b)
+        return cls(face_form=face_form)
 
     def __repr__(self):
         return f"ConvexPolyhedron(vertices={self.vertices})"
+
+    @property
+    def vertices(self):
+        """The extremal points of the polyhedron."""
+        return self.span_form.vertices
 
     @property
     def nv(self):
@@ -92,6 +182,10 @@ class ConvexPolyhedron:
     def dim(self):
         """The dimension of the ambient space."""
         return self.vertices.shape[1]
+
+    # def is_box(self):
+    #     if self.A.shape
+    #     pass
 
     def contains(self, points, tol=1e-8):
         """Test if the polyhedron contains a set of points.
@@ -110,8 +204,23 @@ class ConvexPolyhedron:
             contains the corresponding point and ``False`` otherwise.
         """
         points = np.atleast_2d(points)
-        c = self.A @ points.T <= np.tile(self.b, (points.shape[0], 1)).T + tol
-        return np.all(c, axis=0)
+        n = points.shape[0]
+
+        B_ineq = np.tile(self.face_form.b_ineq, (n, 1)).T
+        ineq = self.face_form.A_ineq @ points.T <= B_ineq + tol
+
+        # degenerate polyhedra may contain equality constraints
+        if self.face_form.spans_linear:
+            B_eq = np.tile(self.face_form.b_eq, (n, 1)).T
+            eq = np.abs(self.face_form.A_eq @ points.T - B_eq) <= tol
+            result = np.logical_and(eq.all(axis=0), ineq.all(axis=0))
+        else:
+            result = ineq.all(axis=0)
+
+        # convert to scalar if only one point was tested
+        if result.size == 1:
+            return result.item()
+        return result
 
     def contains_polyhedron(self, other, tol=1e-8):
         """Test if this polyhedron contains another one.
@@ -204,12 +313,10 @@ class ConvexPolyhedron:
         """
         assert isinstance(other, ConvexPolyhedron)
 
-        A = np.vstack((self.A, other.A))
-        b = np.concatenate((self.b, other.b))
-        V = _polyhedron_face_to_span_form(A, b)
-        if V is None:
+        span_form = self.face_form.stack(other.face_form).to_span_form()
+        if span_form is None:
             return None
-        return ConvexPolyhedron(vertices=V)
+        return ConvexPolyhedron(span_form=span_form)
 
 
 def _box_vertices(half_extents, center, rotation):
@@ -264,7 +371,7 @@ class AxisAlignedBox(ConvexPolyhedron):
         assert self.rotation.shape == (3, 3)
 
         vertices = _box_vertices(self.half_extents, self.center, self.rotation)
-        super().__init__(vertices)
+        super().__init__(span_form=SpanForm(vertices))
 
     @classmethod
     def cube(cls, half_extent, center=None, rotation=None):
@@ -785,8 +892,11 @@ def maximum_inscribed_ellipsoid(vertices, rcond=None):
 
     # solve the problem a possibly lower-dimensional space where the set of
     # vertices is full-rank
-    A, b = _polyhedron_span_to_face_form(P)
-    ell = _maximum_inscribed_ellipsoid_inequality_form(A, b)
+    face_form = SpanForm(P).to_face_form()
+    assert not face_form.spans_linear, "Vertices have a linear constraint!"
+    ell = _maximum_inscribed_ellipsoid_inequality_form(
+        face_form.A_ineq, face_form.b_ineq
+    )
 
     # unproject back into the original space
     Einv = R @ ell.Einv @ R.T
