@@ -1,4 +1,5 @@
 import numpy as np
+import cvxpy as cp
 
 import inertial_params as ip
 
@@ -63,5 +64,34 @@ def test_intersection():
     assert polyhedra_same(intersection, expected)
 
 
+def test_degenerate():
+    # here we mostly want to ensure the face form behaves as expected in the
+    # dengenerate case
+    poly = ip.ConvexPolyhedron.from_vertices([[0, 0, 0], [1, 0, 0], [0, 1, 0]])
+    assert poly.A.shape == (5, 3)
+    assert poly.b.shape == (5,)
+
+    # ensure contains works as expected
+    assert poly.contains([0.5, 0.5, 0])
+    assert not poly.contains([0.5, 0.5, 0.1])
+    assert not poly.contains([0.5, 0.5, -0.1])
+
+    # ensure we recover the same vertices when going back to span form from
+    # inequality-only face form
+    poly2 = ip.ConvexPolyhedron(span_form=poly.face_form.to_span_form())
+    assert polyhedra_same(poly2, poly)
+
+
 def test_grid():
     pass
+
+
+def test_must_contain():
+    poly = ip.ConvexPolyhedron.from_vertices([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    point = cp.Variable(3)
+
+    objective = cp.Maximize(point[0])
+    constraints = poly.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 1.0)

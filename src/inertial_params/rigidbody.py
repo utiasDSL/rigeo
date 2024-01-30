@@ -27,7 +27,7 @@ class RigidBody:
         """Check if the rigid body is density realizable."""
         pass
 
-    def realizability_constraints(self):
+    def must_realize(self):
         """Generate the constraints required for a set of inertial parameters
         to be realizable on the this rigid body.
 

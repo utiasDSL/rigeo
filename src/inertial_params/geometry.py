@@ -51,10 +51,15 @@ class FaceForm:
     """Face form (H-rep) of a convex polyhedron."""
 
     def __init__(self, A_ineq, b_ineq, A_eq=None, b_eq=None):
-        self.A_ineq = A_ineq
-        self.b_ineq = b_ineq
-        self.A_eq = A_eq
-        self.b_eq = b_eq
+        # we use an inequality-only representation, where equalities are
+        # represented by two-sided inequalities
+        if A_eq is not None:
+            assert A_eq.shape[0] == b_eq.shape[0]
+            self.A = np.vstack((A_ineq, A_eq, -A_eq))
+            self.b = np.concatenate((b_ineq, b_eq, -b_eq))
+        else:
+            self.A = A_ineq
+            self.b = b_ineq
 
     @classmethod
     def from_cdd_matrix(cls, mat):
@@ -74,36 +79,19 @@ class FaceForm:
             b_eq=b[eq_idx] if len(eq_idx) > 0 else None,
         )
 
-    @property
-    def spans_linear(self):
-        return self.A_eq is not None
-
     def __repr__(self):
-        return f"FaceForm(A_ineq={self.A_ineq}, A_eq={self.A_eq}, b_ineq={self.b_ineq}, b_eq={self.b_eq})"
+        return f"FaceForm(A_ineq={self.A}, A_eq={self.b})"
 
     def stack(self, other):
         """Combine two face forms together."""
-        A_ineq = np.vstack((self.A_ineq, other.A_ineq))
-        b_ineq = np.concatenate((self.b_ineq, other.b_ineq))
-
-        if self.spans_linear or other.spans_linear:
-            A_eq = np.vstack([A for A in [self.A_eq, other.A_eq] if A is not None])
-            b_eq = np.concatenate([b for b in [self.b_eq, other.b_eq] if b is not None])
-        else:
-            A_eq = None
-            b_eq = None
-
-        return FaceForm(A_ineq=A_ineq, b_ineq=b_ineq, A_eq=A_eq, b_eq=b_eq)
+        A = np.vstack((self.A, other.A))
+        b = np.concatenate((self.b, other.b))
+        return FaceForm(A_ineq=A, b_ineq=b)
 
     def to_span_form(self):
         """Convert to span form (V-rep)."""
-        A = np.vstack([A for A in [self.A_ineq, self.A_eq] if A is not None])
-        b = np.concatenate([b for b in [self.b_ineq, self.b_eq] if b is not None])
-        lin_set = frozenset(range(self.b_ineq.shape[0], b.shape[0]))
-
-        S = np.hstack((b[:, None], -A))
+        S = np.hstack((self.b[:, None], -self.A))
         Smat = cdd.Matrix(S)
-        Smat.lin_set = lin_set
         Smat.rep_type = cdd.RepType.INEQUALITY
 
         poly = cdd.Polyhedron(Smat)
@@ -176,6 +164,16 @@ class ConvexPolyhedron:
         return f"ConvexPolyhedron(vertices={self.vertices})"
 
     @property
+    def A(self):
+        """Matrix part of the face form (normals)."""
+        return self.face_form.A
+
+    @property
+    def b(self):
+        """Vector part of the face form (offsets)."""
+        return self.face_form.b
+
+    @property
     def vertices(self):
         """The extremal points of the polyhedron."""
         return self.span_form.vertices
@@ -194,19 +192,6 @@ class ConvexPolyhedron:
     #     if self.A.shape
     #     pass
 
-    def _contains_constraints(self, points):
-        """Constraints for cvxpy variable points to lie inside the polyhedron."""
-        if points.ndim == 1:
-            points = [points]
-
-        constraints = []
-        for point in points:
-            constraints.append(self.face_form.A_ineq @ point <= self.face_form.b_ineq)
-            if self.face_form.spans_linear:
-                constraints.append(self.face_form.A_eq @ point == self.face_form.b_eq)
-        return constraints
-
-
     def contains(self, points, tol=1e-8):
         """Test if the polyhedron contains a set of points.
 
@@ -219,31 +204,31 @@ class ConvexPolyhedron:
 
         Returns
         -------
-        : np.ndarray, shape (n,)
+        : bool or np.ndarray of bool, shape (n,)
             Boolean array where each entry is ``True`` if the polyhedron
             contains the corresponding point and ``False`` otherwise.
         """
-        if isinstance(points, cp.Variable):
-            return self._contains_constraints(points)
+        points = np.array(points)
+        if points.ndim == 1:
+            return np.all(self.A @ points <= self.b + tol)
+        return np.array([np.all(self.A @ p <= self.b + tol) for p in points])
 
-        points = np.atleast_2d(points)
-        n = points.shape[0]
+    def must_contain(self, points):
+        """Generate cvxpy constraints to keep the points inside the polyhedron.
 
-        B_ineq = np.tile(self.face_form.b_ineq, (n, 1)).T
-        ineq = self.face_form.A_ineq @ points.T <= B_ineq + tol
+        Parameters
+        ----------
+        points : cp.Variable, shape (self.dim,) or (n, self.dim)
+            A point or set of points to constrain to lie inside the polyhedron.
 
-        # degenerate polyhedra may contain equality constraints
-        if self.face_form.spans_linear:
-            B_eq = np.tile(self.face_form.b_eq, (n, 1)).T
-            eq = np.abs(self.face_form.A_eq @ points.T - B_eq) <= tol
-            result = np.logical_and(eq.all(axis=0), ineq.all(axis=0))
-        else:
-            result = ineq.all(axis=0)
-
-        # convert to scalar if only one point was tested
-        if result.size == 1:
-            return result.item()
-        return result
+        Returns
+        -------
+        : list
+            A list of cxvpy constraints that keep the points inside the polyhedron.
+        """
+        if points.ndim == 1:
+            points = [points]
+        return [self.A @ p <= self.b for p in points]
 
     def contains_polyhedron(self, other, tol=1e-8):
         """Test if this polyhedron contains another one.
@@ -312,13 +297,13 @@ class ConvexPolyhedron:
         contained = self.contains(box_grid)
         return box_grid[contained, :]
 
-    def minimum_bounding_ellipsoid(self, rcond=None):
+    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False):
         """Construct the minimum-volume bounding ellipsoid for this polyhedron."""
-        return minimum_bounding_ellipsoid(self.vertices, rcond=rcond)
+        return minimum_bounding_ellipsoid(self.vertices, rcond=rcond, sphere=sphere)
 
-    def maximum_inscribed_ellipsoid(self, rcond=None):
+    def maximum_inscribed_ellipsoid(self, rcond=None, sphere=False):
         """Construct the maximum-volume ellipsoid inscribed in this polyhedron."""
-        return maximum_inscribed_ellipsoid(self.vertices, rcond=rcond)
+        return maximum_inscribed_ellipsoid(self.vertices, rcond=rcond, sphere=sphere)
 
     def intersect(self, other):
         """Intersect this polyhedron with another one.
@@ -377,6 +362,9 @@ class Box(ConvexPolyhedron):
         The (x, y, z) half extents of the box.
     center :
         The center of the box.
+    rotation : np.ndarray, shape (3, 3)
+        The orientation of the box. If ``rotation=np.eye(3)``, then the box is
+        axis-aligned.
     """
 
     def __init__(self, half_extents, center=None, rotation=None):
@@ -520,8 +508,8 @@ class Cylinder:
     """
 
     def __init__(self, length, radius, axis=None, center=None):
-        assert length > 0
-        assert radius > 0
+        assert length >= 0
+        assert radius >= 0
 
         if axis is None:
             axis = np.array([0, 0, 1])
@@ -537,12 +525,13 @@ class Cylinder:
 
         self.U = null_space(self.axis[None, :])
 
-    def as_ellipsoidal_intersection(self):
-        """Construct a set of ellipsoids, the intersection of which is the cylinder."""
-        # TODO probably just make these properties of the cylinder
         A1 = 4 * np.outer(self.axis, self.axis) / self.length**2
         A2 = self.U @ self.U.T / self.radius**2
-        return [Ellipsoid(A, self.center) for A in [A1, A2]]
+        self.ellipsoids = [Ellipsoid(A, self.center) for A in [A1, A2]]
+
+    def as_ellipsoidal_intersection(self):
+        """Construct a set of ellipsoids, the intersection of which is the cylinder."""
+        return self.ellipsoids
 
     def contains(self, points, tol=1e-8):
         """Check if points are contained in the ellipsoid.
@@ -561,15 +550,10 @@ class Cylinder:
             the ellipsoid, or ``False`` if not. For multiple points, return a
             boolean array with one value per point.
         """
-        points = np.atleast_2d(points)
-        xs = points - self.center
-        contained_lengthwise = np.abs(xs @ self.axis) <= self.length / 2
-        contained_transverse = np.array(
-            [x @ self.U @ self.U.T @ x <= self.radius**2 for x in xs], dtype=bool
-        )
-        assert contained_lengthwise.shape == contained_transverse.shape
-        contained = np.logical_and(contained_lengthwise, contained_transverse)
-        return np.squeeze(contained)
+        return np.all([E.contains(points) for E in self.ellipsoids], axis=0)
+
+    def must_contain(self, points):
+        return [c for E in self.ellipsoids for c in E.must_contain(points)]
 
     def inscribed_box(self):
         # TODO once box has rotation information
@@ -711,12 +695,6 @@ class Ellipsoid:
         """
         return self.rank < self.dim
 
-    def _contains_constraints(self, points):
-        c = self.center
-        if points.ndim == 1:
-            points = [points]
-        return [(p - c) @ self.Einv @ (p - c) <= 1 for p in points]
-
     def contains(self, points, tol=1e-8):
         """Check if points are contained in the ellipsoid.
 
@@ -734,9 +712,6 @@ class Ellipsoid:
             the ellipsoid, or ``False`` if not. For multiple points, return a
             boolean array with one value per point.
         """
-        if isinstance(points, cp.Variable):
-            return self._contains_constraints(points)
-
         points = np.array(points)
         if points.ndim == 1:
             p = points - self.center
@@ -748,6 +723,11 @@ class Ellipsoid:
             raise ValueError(
                 f"points must have 1 or 2 dimensions, but has {points.ndim}."
             )
+
+    def must_contain(self, points):
+        if points.ndim == 1:
+            points = [points]
+        return [cp.quad_form(p - self.center, self.Einv) <= 1.0 for p in points]
 
     def transform(self, rotation=None, translation=None):
         """Apply an affine transform to the ellipsoid.
@@ -848,7 +828,7 @@ def cube_inscribed_ellipsoid(h):
     return Ellipsoid.sphere(h)
 
 
-def minimum_bounding_ellipsoid(points, rcond=None):
+def minimum_bounding_ellipsoid(points, rcond=None, sphere=False):
     """Compute the minimum bounding ellipsoid for a set of points.
 
     See Convex Optimization by Boyd & Vandenberghe, sec. 8.4.1.
@@ -871,6 +851,10 @@ def minimum_bounding_ellipsoid(points, rcond=None):
 
     objective = cp.Minimize(-cp.log_det(A))
     constraints = [cp.norm2(A @ x + b) <= 1 for x in P]
+    if sphere:
+        # if we want a sphere, then A is a multiple of the identity matrix
+        r = cp.Variable(1)
+        constraints.append(A == r * np.eye(dim))
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)
 
@@ -880,7 +864,8 @@ def minimum_bounding_ellipsoid(points, rcond=None):
     return Ellipsoid.from_Ab(A=A, b=b, rcond=rcond)
 
 
-def _maximum_inscribed_ellipsoid_inequality_form(A, b):
+# TODO add solver argument
+def _maximum_inscribed_ellipsoid_inequality_form(A, b, sphere=False):
     """Compute the maximum inscribed ellipsoid for an inequality-form
     polyhedron P = {x | Ax <= b}.
 
@@ -897,6 +882,10 @@ def _maximum_inscribed_ellipsoid_inequality_form(A, b):
 
     objective = cp.Maximize(cp.log_det(B))
     constraints = [cp.norm2(B @ A[i, :]) + A[i, :] @ c <= b[i] for i in range(n)]
+    if sphere:
+        # if we want a sphere, then A is a multiple of the identity matrix
+        r = cp.Variable(1)
+        constraints.append(B == r * np.eye(dim))
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)
 
@@ -904,7 +893,7 @@ def _maximum_inscribed_ellipsoid_inequality_form(A, b):
     return Ellipsoid(Einv=np.linalg.inv(E), center=c.value)
 
 
-def maximum_inscribed_ellipsoid(vertices, rcond=None):
+def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False):
     """Compute the maximum inscribed ellipsoid for a polyhedron represented by
     a set of vertices.
 
@@ -921,10 +910,8 @@ def maximum_inscribed_ellipsoid(vertices, rcond=None):
     # solve the problem a possibly lower-dimensional space where the set of
     # vertices is full-rank
     face_form = SpanForm(P).to_face_form()
-    assert not face_form.spans_linear, "Vertices have a linear constraint!"
-    ell = _maximum_inscribed_ellipsoid_inequality_form(
-        face_form.A_ineq, face_form.b_ineq
-    )
+    # assert not face_form.spans_linear, "Vertices have a linear constraint!"
+    ell = _maximum_inscribed_ellipsoid_inequality_form(face_form.A, face_form.b, sphere=sphere)
 
     # unproject back into the original space
     Einv = R @ ell.Einv @ R.T

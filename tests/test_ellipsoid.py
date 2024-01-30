@@ -1,4 +1,5 @@
 import numpy as np
+import cvxpy as cp
 from spatialmath.base import rotx, roty, rotz
 import inertial_params as ip
 
@@ -98,6 +99,12 @@ def test_cube_inscribed_ellipsoid():
     assert np.allclose(ell.Q, elld.Q)
 
 
+def test_inscribed_sphere():
+    box = ip.Box(half_extents=[1, 2, 3])
+    ell = box.maximum_inscribed_ellipsoid(sphere=True)
+    assert np.allclose(ell.Einv, np.eye(3))
+
+
 def test_inscribed_ellipsoid_4d():
     np.random.seed(0)
 
@@ -122,3 +129,13 @@ def test_inscribed_ellipsoid_degenerate():
     # ellipsoid
     for x in vertices:
         assert (x - ell.center).T @ ell.Einv @ (x - ell.center) >= 1
+
+
+def test_ellipsoid_must_contain():
+    ell = ip.Ellipsoid.sphere(radius=1)
+    point = cp.Variable(3)
+    objective = cp.Maximize(point[0])
+    constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 1.0)
