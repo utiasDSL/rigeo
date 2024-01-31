@@ -1,5 +1,6 @@
 """Polyhedral and ellipsoidal geometry."""
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 import numpy as np
 import cvxpy as cp
@@ -583,29 +584,22 @@ class Ellipsoid:
         return f"Ellipsoid(center={self.center}, Einv={self.Einv})"
 
     @classmethod
-    def sphere(cls, radius, center=None, dim=None):
+    def sphere(cls, radius, center=None):
         """Construct a sphere.
 
         Parameters
         ----------
         radius : float
             Radius of the sphere.
-        center : iterable
+        center : np.ndarray, shape (dim,)
             Optional center point of the sphere.
-        dim : int
-            Dimension of the sphere. Only required if ``center`` not provided,
-            in which case the sphere is centered at the origin. If neither
-            ``center`` or ``dim`` is provided, defaults to a 3D sphere at the
-            origin.
         """
         if center is None:
-            if dim is None:
-                dim = 3
-            center = np.zeros(dim)
+            center = np.zeros(3)
         else:
             center = np.array(center)
-        assert center.shape == (dim,)
 
+        dim = center.shape[0]
         Einv = np.eye(dim) / radius**2
         return cls(Einv=Einv, center=center)
 
@@ -911,7 +905,9 @@ def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False):
     # vertices is full-rank
     face_form = SpanForm(P).to_face_form()
     # assert not face_form.spans_linear, "Vertices have a linear constraint!"
-    ell = _maximum_inscribed_ellipsoid_inequality_form(face_form.A, face_form.b, sphere=sphere)
+    ell = _maximum_inscribed_ellipsoid_inequality_form(
+        face_form.A, face_form.b, sphere=sphere
+    )
 
     # unproject back into the original space
     Einv = R @ ell.Einv @ R.T
@@ -939,3 +935,56 @@ def positive_definite_distance(A, B):
     eigs = np.linalg.eigvals(C)
     # TODO: (Lee, Wensing, and Park, 2020) includes the factor of 0.5
     return np.sqrt(0.5 * np.sum(np.log(eigs) ** 2))
+
+
+@dataclass
+class ClosestPointInfo:
+    """Information about a closest point query.
+
+    Attributes
+    ----------
+    p1 : np.ndarray
+        The closest point on the first shape.
+    p2 : np.ndarray
+        The closest point on the second shape.
+    dist : float, non-negative
+        The distance between the two shapes.
+    """
+
+    p1: np.ndarray
+    p2: np.ndarray
+    dist: float
+
+
+def closest_points(shape1, shape2, solver=None):
+    """Compute the closest points between two shapes.
+
+    When the two shapes are in contact or penetrating, the distance will be
+    zero and the points can be anything inside the intersection.
+
+    This function is *not* optimized for speed: a full convex program is
+    solved. Useful for prototyping but not for high-speed queries.
+
+    Parameters
+    ----------
+    shape1 : ConvexPolyhedron or Ellipsoid or Cylinder
+        The first shape to check.
+    shape2 : ConvexPolyhedron or Ellipsoid or Cylinder
+        The second shape to check.
+    solver : str or None
+        The solver for cvxpy to use.
+
+    Returns
+    -------
+    : ClosestPointInfo
+        Information about the closest points.
+    """
+    p1 = cp.Variable(3)
+    p2 = cp.Variable(3)
+
+    objective = cp.Minimize(cp.norm2(p2 - p1))
+    constraints = shape1.must_contain(p1) + shape2.must_contain(p2)
+    problem = cp.Problem(objective, constraints)
+    problem.solve(solver=solver)
+
+    return ClosestPointInfo(p1=p1.value, p2=p2.value, dist=objective.value)
