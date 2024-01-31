@@ -57,21 +57,21 @@ def get_urdf_path():
     return Path(ros_utils.package_file_path("inertial_params", "urdf"))
 
 
-def schur(X, x, m):
-    """Construct the matrix [[X, x], [x.T, m]].
+def schur(A, b, c):
+    """Construct the matrix [[A, b], [b.T, c]].
 
     Parameters can be either cvxpy variables are numpy arrays.
     """
     # cvxpy variables
-    if type(X) == cp.Variable:
-        y = cp.reshape(x, (x.shape[0], 1))
-        z = cp.reshape(m, (1, 1))
-        return cp.bmat([[X, y], [y.T, z]])
+    if np.any([isinstance(x, cp.Expression) for x in (A, b, c)]):
+        b = cp.reshape(b, (b.shape[0], 1))
+        c = cp.reshape(c, (1, 1))
+        return cp.bmat([[A, b], [b.T, c]])
 
     # otherwise assume numpy
-    y = np.reshape(x, (x.shape[0], 1))
-    z = np.reshape(m, (1, 1))
-    return np.block([[X, y], [y.T, z]])
+    b = np.reshape(b, (b.shape[0], 1))
+    c = np.reshape(c, (1, 1))
+    return np.block([[A, b], [b.T, c]])
 
 
 def compute_evaluation_times(duration, step=0.1):

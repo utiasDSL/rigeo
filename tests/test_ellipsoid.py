@@ -134,8 +134,19 @@ def test_inscribed_ellipsoid_degenerate():
 def test_ellipsoid_must_contain():
     ell = ip.Ellipsoid.sphere(radius=1)
     point = cp.Variable(3)
+
     objective = cp.Maximize(point[0])
     constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 1.0)
+
+    # with scale
+    h = cp.Variable(3)
+    m = cp.Variable(1)
+
+    objective = cp.Maximize(h[0])
+    constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
     problem = cp.Problem(objective, constraints)
     problem.solve()
     assert np.isclose(objective.value, 1.0)

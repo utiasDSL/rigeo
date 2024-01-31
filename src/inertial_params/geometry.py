@@ -8,6 +8,7 @@ import cdd
 from scipy.linalg import sqrtm, orth, null_space
 from scipy.spatial import ConvexHull
 
+from inertial_params.util import schur
 from inertial_params.random import random_weight_vectors
 
 
@@ -214,13 +215,18 @@ class ConvexPolyhedron:
             return np.all(self.A @ points <= self.b + tol)
         return np.array([np.all(self.A @ p <= self.b + tol) for p in points])
 
-    def must_contain(self, points):
+    def must_contain(self, points, scale=1.0):
         """Generate cvxpy constraints to keep the points inside the polyhedron.
 
         Parameters
         ----------
         points : cp.Variable, shape (self.dim,) or (n, self.dim)
             A point or set of points to constrain to lie inside the polyhedron.
+        scale : float, positive
+            Scale for ``points``. The main idea is that one may wish to check
+            that the CoM belongs to the shape, but using the quantity
+            :math:`h=mc`. Then ``must_contain(c)`` is equivalent to
+            ``must_contain(h, scale=m)``.
 
         Returns
         -------
@@ -229,7 +235,7 @@ class ConvexPolyhedron:
         """
         if points.ndim == 1:
             points = [points]
-        return [self.A @ p <= self.b for p in points]
+        return [self.A @ p <= scale * self.b for p in points]
 
     def contains_polyhedron(self, other, tol=1e-8):
         """Test if this polyhedron contains another one.
@@ -553,8 +559,8 @@ class Cylinder:
         """
         return np.all([E.contains(points) for E in self.ellipsoids], axis=0)
 
-    def must_contain(self, points):
-        return [c for E in self.ellipsoids for c in E.must_contain(points)]
+    def must_contain(self, points, scale=1.0):
+        return [c for E in self.ellipsoids for c in E.must_contain(points, scale=scale)]
 
     def inscribed_box(self):
         # TODO once box has rotation information
@@ -718,10 +724,13 @@ class Ellipsoid:
                 f"points must have 1 or 2 dimensions, but has {points.ndim}."
             )
 
-    def must_contain(self, points):
+    def must_contain(self, points, scale=1.0):
         if points.ndim == 1:
             points = [points]
-        return [cp.quad_form(p - self.center, self.Einv) <= 1.0 for p in points]
+        return [
+            schur(scale * self.Einv, p - scale * self.center, scale) >> 0
+            for p in points
+        ]
 
     def transform(self, rotation=None, translation=None):
         """Apply an affine transform to the ellipsoid.
