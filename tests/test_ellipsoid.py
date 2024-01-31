@@ -21,7 +21,8 @@ def test_ellipsoid_sphere():
 
 
 def test_ellipsoid_hypersphere():
-    ell = ip.Ellipsoid.sphere(radius=0.5, dim=4)
+    dim = 4
+    ell = ip.Ellipsoid.sphere(radius=0.5, center=np.zeros(dim))
     assert ell.contains([0.4, 0, 0, 0])
     assert not ell.contains([0.6, 0, 0, 0])
     assert ell.rank == 4
@@ -39,8 +40,7 @@ def test_ellipsoid_hypersphere():
 def test_cube_bounding_ellipsoid():
     h = 0.5
     half_lengths = h * np.ones(3)
-    points = ip.Box(half_lengths).vertices
-    ell = ip.minimum_bounding_ellipsoid(points)
+    ell = ip.Box(half_lengths).minimum_bounding_ellipsoid()
     elld = ip.cube_bounding_ellipsoid(h)
     assert np.allclose(ell.Q, elld.Q)
 
