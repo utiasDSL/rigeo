@@ -10,6 +10,7 @@ from scipy.spatial import ConvexHull
 
 from inertial_params.util import schur
 from inertial_params.random import random_weight_vectors
+from inertial_params.inertial import pim_sum_vec_matrices
 
 
 class SpanForm:
@@ -461,11 +462,16 @@ class Box(ConvexPolyhedron):
 
     def as_ellipsoidal_intersection(self):
         """Construct a set of ellipsoids, the intersection of which is the box."""
-        r1, r2, r3 = self.half_extents
-        A1 = self.rotation @ np.diag([1.0 / r1**2, 0, 0]) @ self.rotation.T
-        A2 = self.rotation @ np.diag([0, 1.0 / r2**2, 0]) @ self.rotation.T
-        A3 = self.rotation @ np.diag([0, 0, 1.0 / r3**2]) @ self.rotation.T
-        return [Ellipsoid(A, self.center) for A in [A1, A2, A3]]
+        # TODO make a property
+        ellipsoids = []
+        for i, r in enumerate(self.half_extents):
+            half_extents = np.inf * np.ones(self.dim)
+            half_extents[i] = r
+            ell = Ellipsoid(
+                half_extents=half_extents, rotation=self.rotation, center=self.center
+            )
+            ellipsoids.append(ell)
+        return ellipsoids
 
     def transform(self, translation=None, rotation=None):
         """Apply a rigid transformation to the box."""
@@ -497,44 +503,81 @@ class Box(ConvexPolyhedron):
         half_extents = self.half_extents.copy()
         return Box(half_extents=half_extents, center=center, rotation=rotation)
 
+    def can_realize(self, params):
+        Es = self.as_ellipsoidal_intersection()
+        J = params.J
+        return np.all([np.trace(E.Q @ J) >= 0 for E in Es])
+
+    def must_realize(self, param_var, eps=0):
+        # TODO this needs a lot of testing!
+        if param_var.shape == (4, 4):
+            J = param_var
+        elif param_var.shape == (10,):
+            As = pim_sum_vec_matrices()
+            J = cp.sum([A * p for A, p in zip(As, param_var)])
+        else:
+            raise ValueError(
+                f"Parameter variable has unexpected shape {param_var.shape}"
+            )
+
+        Es = self.as_ellipsoidal_intersection()
+        return [cp.trace(J @ E.Q) >= 0 for E in Es] + [J >> eps * np.eye(4)]
+
 
 class Cylinder:
     """A cylinder in three dimensions.
 
     Parameters
     ----------
-    length : float, positive
+    length : float, non-negative
         The length along the longitudinal axis.
-    radius : float, positive
-        The radius of the cross-section.
-    axis : np.ndarray, shape (3,)
-        The main axis. If not provided, defaults to ``[0, 0, 1]``. The axis is
-        normalized to unit length.
+    radius : float, non-negative
+        The radius of the transverse cross-section.
+    rotation : np.ndarray, shape (3, 3)
+        Rotation matrix, where identity means the z-axis is the longitudinal
+        axis.
     center : np.ndarray, shape (3,)
         The center of the cylinder. If not provided, defaults to the origin.
     """
 
-    def __init__(self, length, radius, axis=None, center=None):
+    def __init__(self, length, radius, rotation=None, center=None):
         assert length >= 0
         assert radius >= 0
 
-        if axis is None:
-            axis = np.array([0, 0, 1])
-        else:
-            axis = np.array(axis) / np.linalg.norm(axis)
-        self.axis = axis
         self.length = length
         self.radius = radius
 
+        if rotation is None:
+            self.rotation = np.eye(3)
+        else:
+            self.rotation = np.array(rotation)
+        assert self.rotation.shape == (3, 3)
+
         if center is None:
-            center = np.zeros_like(axis)
-        self.center = np.array(center)
+            self.center = np.zeros(3)
+        else:
+            self.center = np.array(center)
+        assert self.center.shape == (3,)
 
-        self.U = null_space(self.axis[None, :])
+        ell1 = Ellipsoid(
+            half_extents=[self.radius, self.radius, np.inf],
+            center=self.center,
+            rotation=self.rotation,
+        )
+        ell2 = Ellipsoid(
+            half_extents=[np.inf, np.inf, self.length / 2],
+            center=self.center,
+            rotation=self.rotation,
+        )
+        self.ellipsoids = [ell1, ell2]
 
-        A1 = 4 * np.outer(self.axis, self.axis) / self.length**2
-        A2 = self.U @ self.U.T / self.radius**2
-        self.ellipsoids = [Ellipsoid(A, self.center) for A in [A1, A2]]
+    @property
+    def longitudinal_axis(self):
+        return self.rotation[:, 2]
+
+    @property
+    def transverse_axes(self):
+        return self.rotation[:, :2]
 
     def as_ellipsoidal_intersection(self):
         """Construct a set of ellipsoids, the intersection of which is the cylinder."""
@@ -563,31 +606,95 @@ class Cylinder:
         return [c for E in self.ellipsoids for c in E.must_contain(points, scale=scale)]
 
     def inscribed_box(self):
-        # TODO once box has rotation information
-        pass
+        # TODO need tests for these
+        r = self.radius / np.sqrt(2)
+        half_extents = [r, r, self.length / 2]
+        return Box(
+            half_extents=half_extents, rotation=self.rotation, center=self.center
+        )
 
     def bounding_box(self):
+        half_extents = [self.radius, self.radius, self.length / 2]
+        return Box(
+            half_extents=half_extents, rotation=self.rotation, center=self.center
+        )
+
+
+class Capsule:
+    """A capsule in three dimensions.
+
+    Parameters
+    ----------
+    length : float, non-negative
+        The length along the longitudinal axis.
+    radius : float, non-negative
+        The radius of the transverse cross-section.
+    rotation : np.ndarray, shape (3, 3)
+        Rotation matrix, where identity means the z-axis is the longitudinal
+        axis.
+    center : np.ndarray, shape (3,)
+        The center of the cylinder. If not provided, defaults to the origin.
+    """
+
+    def __init__(self, length, radius, rotation=None, center=None):
+        # TODO same API as the cylinder
         pass
 
 
-# TODO possibly rename Einv
-class Ellipsoid:
-    """Ellipsoid with a variety of representations."""
+def _inv_with_zeros(a):
+    mask = np.isclose(a, 0)
+    a[mask] = 1.0  # placeholder value
+    b = 1.0 / a
+    b[mask] = np.inf  # replace placeholders with inf
+    return b
 
-    def __init__(self, Einv, center=None):
-        assert Einv.ndim == 2
-        assert Einv.shape[0] == Einv.shape[1]
-        self.Einv = Einv
-        self.dim = self.Einv.shape[0]
+
+class Ellipsoid:
+    """Ellipsoid with a variety of representations.
+
+    The ellipsoid may be degenerate in two ways:
+    1. If one or more half extents is infinite, then the ellipsoid is unbounded
+       along one or more axes.
+    2. If one or more half extents is zero, then the ellipsoid actually lives
+       in a lower-dimensional subspace.
+    """
+
+    def __init__(self, half_extents, rotation=None, center=None):
+        self.half_extents = np.array(half_extents)
+        assert np.all(self.half_extents >= 0)
+
+        self.diag = _inv_with_zeros(self.half_extents**2)
+
+        if rotation is None:
+            self.rotation = np.eye(self.dim)
+        else:
+            self.rotation = np.array(rotation)
+        assert self.rotation.shape == (self.dim, self.dim)
 
         if center is None:
-            center = np.zeros(self.dim)
-        self.center = np.array(center)
+            self.center = np.zeros(self.dim)
+        else:
+            self.center = np.array(center)
+        assert self.center.shape == (self.dim,)
 
-        self.rank = np.linalg.matrix_rank(self.Einv)
+    @property
+    def dim(self):
+        return self.half_extents.shape[0]
+
+    @property
+    def Einv(self):
+        return self.rotation @ np.diag(self.diag) @ self.rotation.T
+
+    @property
+    def E(self):
+        return self.rotation @ np.diag(self.half_extents**2) @ self.rotation.T
+
+    @property
+    def rank(self):
+        return self.dim - np.sum(np.isinf(self.half_extents))
 
     def __repr__(self):
-        return f"Ellipsoid(center={self.center}, Einv={self.Einv})"
+        return f"Ellipsoid(half_extents={self.half_extents}, center={self.center}, rotation={self.rotation})"
 
     @classmethod
     def sphere(cls, radius, center=None):
@@ -606,24 +713,19 @@ class Ellipsoid:
             center = np.array(center)
 
         dim = center.shape[0]
-        Einv = np.eye(dim) / radius**2
-        return cls(Einv=Einv, center=center)
+        half_extents = radius * np.ones(dim)
+        return cls(half_extents=half_extents, center=center)
 
     @classmethod
-    def from_half_extents(cls, half_extents, center=None):
-        """Construct an ellipsoid from its half extents, which are the lengths
-        of the semi-major axes.
+    def from_Einv(cls, Einv, center=None):
+        # we can use eigh since Einv is symmetric
+        # TODO is V always a valid rotation matrix?
+        eigs, V = np.linalg.eigh(Einv)
 
-        Parameters
-        ----------
-        half_extents : np.ndarray, shape (d,)
-            The lengths of the semi-major axes, where ``d`` is the dimension.
-        center : np.ndarray, shape (d,)
-            Optional center point of the ellipsoid.
-        """
-        half_extents = np.array(half_extents)
-        Einv = np.diag(1.0 / half_extents**2)
-        return cls(Einv=Einv, center=center)
+        half_extents_inv = np.sqrt(eigs)
+        half_extents = _inv_with_zeros(half_extents_inv)
+
+        return cls(half_extents=half_extents, rotation=V, center=center)
 
     @classmethod
     def from_Ab(cls, A, b, rcond=None):
@@ -632,7 +734,7 @@ class Ellipsoid:
         # use least squares instead of direct solve in case we have a
         # degenerate ellipsoid
         center = np.linalg.lstsq(A, -b, rcond=rcond)[0]
-        return cls(Einv=Einv, center=center)
+        return cls.from_Einv(Einv=Einv, center=center)
 
     @classmethod
     def from_Q(cls, Q):
@@ -641,13 +743,13 @@ class Ellipsoid:
         Einv = -Q[:dim, :dim]
         q = Q[:dim, dim]
         center = np.linalg.solve(Einv, q)
-        return cls(Einv=Einv, center=center)
+        return cls.from_Einv(Einv=Einv, center=center)
 
-    def axes(self):
-        """Compute axes directions and semi-axes values."""
-        e, V = np.linalg.eig(self.Einv)
-        r = 1 / np.sqrt(e)
-        return r, V
+    # def axes(self):
+    #     """Compute axes directions and semi-axes values."""
+    #     e, V = np.linalg.eig(self.Einv)
+    #     r = 1 / np.sqrt(e)
+    #     return r, V
 
     @property
     def A(self):
@@ -656,6 +758,7 @@ class Ellipsoid:
         .. math::
            \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\|Ax+b\\|^2\\leq 1\\}
         """
+        # TODO this can be improved
         return sqrtm(self.Einv)
 
     @property
@@ -695,6 +798,10 @@ class Ellipsoid:
         """
         return self.rank < self.dim
 
+    def is_same(self, other):
+        """Check if this ellipsoid is the same as another."""
+        return np.allclose(self.Q, other.Q)
+
     def contains(self, points, tol=1e-8):
         """Check if points are contained in the ellipsoid.
 
@@ -713,24 +820,46 @@ class Ellipsoid:
             boolean array with one value per point.
         """
         points = np.array(points)
+        mask = np.isclose(self.half_extents, 0)
+        D = np.diag(self.diag[~mask])
+
         if points.ndim == 1:
-            p = points - self.center
-            return p @ self.Einv @ p <= 1 + tol
+            p = self.rotation.T @ (points - self.center)
+
+            # value along degenerate dimension must be zero
+            if not np.allclose(p[mask], 0, rtol=0, atol=tol):
+                return False
+
+            return p[~mask] @ D @ p[~mask] <= 1 + tol
         elif points.ndim == 2:
-            ps = points - self.center
-            return np.array([p @ self.Einv @ p <= 1 + tol for p in ps])
+            ps = (points - self.center) @ self.rotation
+
+            # degenerate dimensions
+            res1 = np.all(np.isclose(ps[:, mask], 0, rtol=0, atol=tol), axis=1)
+
+            # nondegenerate dimensions
+            res2 = np.array([p[~mask] @ D @ p[~mask] <= 1 + tol for p in ps])
+
+            # combine them
+            return np.logical_and(res1, res2)
         else:
             raise ValueError(
                 f"points must have 1 or 2 dimensions, but has {points.ndim}."
             )
 
     def must_contain(self, points, scale=1.0):
+        inf_mask = np.isinf(self.half_extents)
+        E_diag = np.diag(self.half_extents[~inf_mask] ** 2)
+
         if points.ndim == 1:
             points = [points]
-        return [
-            schur(scale * self.Einv, p - scale * self.center, scale) >> 0
-            for p in points
-        ]
+
+        constraints = []
+        for point in points:
+            p = self.rotation.T @ (point - scale * self.center)
+            c = schur(scale * E_diag, p[~inf_mask], scale) >> 0
+            constraints.append(c)
+        return constraints
 
     def transform(self, rotation=None, translation=None):
         """Apply an affine transform to the ellipsoid.
@@ -747,19 +876,17 @@ class Ellipsoid:
         : Ellipsoid
             A new ellipsoid that has been rigidly transformed.
         """
-        if rotation is None and translation is None:
-            return Ellipsoid(Einv=self.Einv.copy(), center=self.center.copy())
-
         if rotation is None:
-            dim = translation.shape[0]
-            rotation = np.eye(dim)
+            rotation = np.eye(self.dim)
         if translation is None:
-            dim = rotation.shape[0]
-            translation = np.zeros(dim)
+            translation = np.zeros(self.dim)
 
-        Einv = rotation @ self.Einv @ rotation.T
-        center = rotation @ self.center + translation
-        return Ellipsoid(Einv=Einv, center=center)
+        new_rotation = rotation @ self.rotation
+        new_center = rotation @ self.center + translation
+        half_extents = self.half_extents.copy()
+        return Ellipsoid(
+            half_extents=half_extents, rotation=new_rotation, center=new_center
+        )
 
     def rotate_about_center(self, rotation):
         """Rotate the ellipsoid about its center point.
@@ -774,8 +901,12 @@ class Ellipsoid:
         : Ellipsoid
             A new ellipsoid that has been rigidly transformed.
         """
-        Einv = rotation @ self.Einv @ rotation.T
-        return Ellipsoid(Einv=Einv, center=self.center.copy())
+        new_rotation = rotation @ self.rotation
+        half_extents = self.half_extents.copy()
+        center = self.center.copy()
+        return Ellipsoid(
+            half_extents=half_extents, rotation=new_rotation, center=center
+        )
 
 
 def convex_hull(points, rcond=None):
@@ -814,21 +945,26 @@ def convex_hull(points, rcond=None):
     return H @ R.T
 
 
-def cube_bounding_ellipsoid(h):
-    """Minimum-volume bounding ellipsoid (sphere) of a cube with half length h.
+def cube_bounding_ellipsoid(half_extent):
+    """Minimum-volume bounding ellipsoid (sphere) of a cube.
 
-    Returns the ellipsoid.
+    Parameters
+    ----------
+    half_extent : float, non-negative
+        The half extent of the cube (i.e., half of the side length).
+
+    Returns the bounding ellipsoid.
     """
-    r = np.linalg.norm([h, h, h])
-    return Ellipsoid.sphere(r)
+    radius = np.linalg.norm(half_extent * np.ones(3))
+    return Ellipsoid.sphere(radius)
 
 
-def cube_inscribed_ellipsoid(h):
+def cube_inscribed_ellipsoid(half_extent):
     """Maximum-volume inscribed ellipsoid (sphere) of a cube with half length h.
 
     Returns the ellipsoid.
     """
-    return Ellipsoid.sphere(h)
+    return Ellipsoid.sphere(half_extent)
 
 
 def minimum_bounding_ellipsoid(points, rcond=None, sphere=False):
@@ -893,7 +1029,7 @@ def _maximum_inscribed_ellipsoid_inequality_form(A, b, sphere=False):
     problem.solve(solver=cp.MOSEK)
 
     E = B.value @ B.value
-    return Ellipsoid(Einv=np.linalg.inv(E), center=c.value)
+    return Ellipsoid.from_Einv(Einv=np.linalg.inv(E), center=c.value)
 
 
 def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False):
@@ -921,7 +1057,7 @@ def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False):
     # unproject back into the original space
     Einv = R @ ell.Einv @ R.T
     center = R @ ell.center
-    return Ellipsoid(Einv=Einv, center=center)
+    return Ellipsoid.from_Einv(Einv=Einv, center=center)
 
 
 def positive_definite_distance(A, B):

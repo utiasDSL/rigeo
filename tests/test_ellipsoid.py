@@ -37,12 +37,24 @@ def test_ellipsoid_hypersphere():
     assert np.allclose(ell.center, ell3.center)
 
 
+def test_ellipsoid_degenerate_contains():
+    ell_0 = ip.Ellipsoid(half_extents=[1, 1, 0])
+    ell_inf = ip.Ellipsoid(half_extents=[1, 1, np.inf])
+
+    assert ell_0.contains([0.5, 0.5, 0])
+    assert np.all(ell_0.contains([[0.5, 0.5, 0], [-0.1, 0.5, 0]]))
+    assert not np.any(ell_0.contains([[0.5, 0.5, -0.1], [0.5, 0.5, 0.1]]))
+
+    assert ell_inf.contains([0.5, 0.5, 0])
+    assert np.all(ell_inf.contains([[0.5, 0.5, 0], [0.5, 0.5, 10]]))
+
+
 def test_cube_bounding_ellipsoid():
     h = 0.5
     half_lengths = h * np.ones(3)
     ell = ip.Box(half_lengths).minimum_bounding_ellipsoid()
     elld = ip.cube_bounding_ellipsoid(h)
-    assert np.allclose(ell.Q, elld.Q)
+    assert ell.is_same(elld)
 
 
 def test_cube_bounding_ellipsoid_translated():
@@ -55,7 +67,7 @@ def test_cube_bounding_ellipsoid_translated():
 
     ell = ip.minimum_bounding_ellipsoid(points)
     elld = ip.cube_bounding_ellipsoid(h).transform(translation=offset)
-    assert np.allclose(ell.Q, elld.Q)
+    assert ell.is_same(elld)
 
 
 def test_cube_bounding_ellipsoid_rotated():
@@ -68,7 +80,7 @@ def test_cube_bounding_ellipsoid_rotated():
 
     ell = ip.minimum_bounding_ellipsoid(points)
     elld = ip.cube_bounding_ellipsoid(h).transform(rotation=C)
-    assert np.allclose(ell.Q, elld.Q)
+    assert ell.is_same(elld)
 
 
 def test_bounding_ellipoid_4d():
@@ -77,8 +89,7 @@ def test_bounding_ellipoid_4d():
     dim = 4
     points = np.random.random((20, dim))
     ell = ip.minimum_bounding_ellipsoid(points)
-    for x in points:
-        assert ell.contains(x)
+    assert np.all(ell.contains(points))
 
 
 def test_bounding_ellipsoid_degenerate():
@@ -86,8 +97,7 @@ def test_bounding_ellipsoid_degenerate():
     ell = ip.minimum_bounding_ellipsoid(points)
     assert ell.rank == 1
     assert ell.degenerate()
-    for x in points:
-        assert ell.contains(x)
+    assert np.all(ell.contains(points))
 
 
 def test_cube_inscribed_ellipsoid():
@@ -96,7 +106,7 @@ def test_cube_inscribed_ellipsoid():
     vertices = ip.Box(half_lengths).vertices
     ell = ip.maximum_inscribed_ellipsoid(vertices)
     elld = ip.cube_inscribed_ellipsoid(h)
-    assert np.allclose(ell.Q, elld.Q)
+    assert ell.is_same(elld)
 
 
 def test_inscribed_sphere():
@@ -111,7 +121,6 @@ def test_inscribed_ellipsoid_4d():
     dim = 4
     points = np.random.random((20, dim))
     vertices = ip.convex_hull(points)
-    # A, b = ip.polyhedron_span_to_face_form(vertices)
     ell = ip.maximum_inscribed_ellipsoid(vertices)
 
     # check that all the vertices are on the border or outside of the
@@ -133,6 +142,7 @@ def test_inscribed_ellipsoid_degenerate():
 
 def test_ellipsoid_must_contain():
     ell = ip.Ellipsoid.sphere(radius=1)
+
     point = cp.Variable(3)
 
     objective = cp.Maximize(point[0])
@@ -150,3 +160,60 @@ def test_ellipsoid_must_contain():
     problem = cp.Problem(objective, constraints)
     problem.solve()
     assert np.isclose(objective.value, 1.0)
+
+    # offset and smaller radius
+    ell = ip.Ellipsoid.sphere(radius=0.5, center=[1, 1, 1])
+
+    objective = cp.Maximize(h[0])
+    constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 1.5)
+
+
+# TODO test with rotations
+def test_ellipsoid_must_contain_degenerate():
+    # zero half extent
+    ell = ip.Ellipsoid(half_extents=[0.5, 0.5, 0])
+
+    point = cp.Variable(3)
+
+    objective = cp.Maximize(point[0])
+    constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.5)
+
+    objective = cp.Maximize(point[2])
+    constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.0, rtol=0, atol=1e-7)
+
+    # with scale
+    h = cp.Variable(3)
+    m = cp.Variable(1)
+
+    objective = cp.Maximize(h[2])
+    constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.0, rtol=0, atol=5e-7)
+
+    # infinite half extent
+    ell = ip.Ellipsoid(half_extents=[0.5, 0.5, np.inf])
+
+    h = cp.Variable(3)
+    m = cp.Variable(1)
+
+    objective = cp.Maximize(h[0])
+    constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.5)
+
+    objective = cp.Maximize(h[2])
+    constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert problem.status == "unbounded"

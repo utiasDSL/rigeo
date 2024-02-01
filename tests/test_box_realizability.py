@@ -1,54 +1,79 @@
 import numpy as np
+import cvxpy as cp
 
 import inertial_params as ip
 
 
-def Q_matrices(shape):
-    return [ell.Q for ell in shape.as_ellipsoidal_intersection()]
-
-
-def test_cube_at_origin():
+def test_cube_at_origin_can_realize():
     np.random.seed(0)
 
     N = 1000  # number of trials
     n = 10  # number of point masses per trial
 
     box = ip.Box(half_extents=[0.5, 0.5, 0.5])
-    Qs = Q_matrices(box)
 
     for i in range(N):
         points = box.random_points(n)
         masses = np.random.random(n)
         params = ip.InertialParameters.from_point_masses(masses=masses, points=points)
-        assert np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+        assert box.can_realize(params)
 
     points = np.array([-box.half_extents, box.half_extents])
     masses = [0.5, 0.5]
     params = ip.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+    assert box.can_realize(params)
 
     masses = np.ones(8)
     params = ip.InertialParameters.from_point_masses(masses=masses, points=box.vertices)
-    assert np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+    assert box.can_realize(params)
 
     # infeasible case
     points = np.array([-box.half_extents, 1.1 * box.half_extents])
     masses = [0.5, 0.5]
     params = ip.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+    assert not box.can_realize(params)
 
 
-def test_cuboid_offset_from_origin():
+def test_box_offset_from_origin_can_realize():
     np.random.seed(0)
 
     N = 1000  # number of trials
     n = 10  # number of point masses per trial
 
     box = ip.Box(half_extents=[1.0, 0.5, 0.1], center=[1, 1, 0])
-    Qs = Q_matrices(box)
 
     for i in range(N):
         points = box.random_points(n)
         masses = np.random.random(n)
         params = ip.InertialParameters.from_point_masses(masses=masses, points=points)
-        assert np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+        assert box.can_realize(params)
+
+
+def test_cube_must_realize_J():
+    box = ip.Box(half_extents=[0.5, 0.5, 0.5])
+
+    J = cp.Variable((4, 4), PSD=True)
+    m = J[3, 3]
+
+    objective = cp.Maximize(J[0, 0])
+
+    # need a mass constraint to bound the problem
+    constraints = box.must_realize(J) + [m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.5**2)
+
+
+def test_cube_must_realize_vec():
+    box = ip.Box(half_extents=[0.5, 0.5, 0.5])
+
+    θ = cp.Variable(10)
+    m = θ[0]
+
+    objective = cp.Maximize(θ[4])
+
+    # need a mass constraint to bound the problem
+    constraints = box.must_realize(θ) + [m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.5)

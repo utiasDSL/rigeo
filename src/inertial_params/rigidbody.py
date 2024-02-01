@@ -1,3 +1,5 @@
+import cvxpy as cp
+
 import inertial_params.util as util
 
 
@@ -27,6 +29,7 @@ class RigidBody:
         """Check if the rigid body is density realizable."""
         pass
 
+    # TODO this doesn't really make sense: need to pass in J
     def must_realize(self):
         """Generate the constraints required for a set of inertial parameters
         to be realizable on the this rigid body.
@@ -36,7 +39,43 @@ class RigidBody:
         : list
             A list of cvxpy constraints.
         """
+        # assert isinstance(J, cp.Expression)
         pass
+
+
+def density_realizable(shapes, params):
+    # one shape we can just check
+    if not isinstance(shapes, Iterable):
+        return shapes.can_realize(params)
+
+    # otherwise we need to solve an opt problem
+    Js = []
+    constraints = []
+    for shape in shapes:
+        J = cp.Variable((4, 4), PSD=True)
+        constraints.extend(shape.must_realize(J))
+        Js.append(J)
+    constraints.append(params.J == cp.sum(Js))
+
+    # feasibility problem
+    objective = cp.Minimize(0)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    return problem.status == "optimal"
+
+
+def must_be_density_realizable(shapes, param_var):
+    """Generate the constraints required for a set of inertial parameters
+    to be realizable on the this rigid body.
+
+    param_var can be either θ or J
+
+    Returns
+    -------
+    : list
+        A list of cvxpy constraints.
+    """
+    pass
 
 
 def body_regressor(V, A):

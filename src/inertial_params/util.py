@@ -2,6 +2,7 @@ from pathlib import Path
 import numpy as np
 import cvxpy as cp
 
+# TODO remove this dep
 from mobile_manipulation_central import ros_utils
 
 
