@@ -1,6 +1,8 @@
 import numpy as np
 import cvxpy as cp
 
+import pytest
+
 import inertial_params as ip
 
 
@@ -80,6 +82,14 @@ def test_degenerate():
     # inequality-only face form
     poly2 = ip.ConvexPolyhedron(span_form=poly.face_form.to_span_form())
     assert polyhedra_same(poly2, poly)
+
+
+def test_unbounded():
+    # half space is unbounded
+    A = np.array([[1, 0, 0]])
+    b = np.array([0])
+    with pytest.raises(ValueError):
+        poly = ip.ConvexPolyhedron.from_halfspaces(A, b)
 
 
 def test_grid():

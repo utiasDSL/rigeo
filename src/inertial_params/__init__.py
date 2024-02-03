@@ -1,3 +1,4 @@
+from inertial_params.polydd import SpanForm, FaceForm
 from inertial_params.geometry import *
 from inertial_params.inertial import *
 from inertial_params.random import *

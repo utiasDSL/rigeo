@@ -5,9 +5,9 @@ from dataclasses import dataclass
 
 import numpy as np
 import cvxpy as cp
-import cdd
 from scipy.linalg import orth
 
+from inertial_params.polydd import SpanForm, FaceForm
 from inertial_params.util import schur
 from inertial_params.random import random_weight_vectors
 from inertial_params.inertial import pim_sum_vec_matrices, InertialParameters
@@ -44,6 +44,7 @@ def _box_vertices(half_extents, center, rotation):
     )
     return (rotation @ v.T).T + center
 
+
 # TODO
 class Shape(abc.ABC):
     @abc.abstractmethod
@@ -75,185 +76,6 @@ class Shape(abc.ABC):
         pass
 
 
-# TODO put in their own file? doubledesc.py or polydd.py
-# TODO would like to handle rays as well, converting linspan to pure rays
-class SpanForm:
-    """Span form (V-rep) of a convex polyhedron."""
-
-    # def __init__(self, vertices):
-    #     self.vertices = np.array(vertices)
-
-
-    def __init__(self, vertices=None, rays=None, span=None):
-        if vertices is not None:
-            vertices = np.array(vertices)
-        if rays is not None:
-            rays = np.array(rays)
-
-        self.vertices = vertices
-        self.rays = rays
-
-        # if we also have some linspan generators, convert these to rays
-        if span is not None:
-            span_rays = np.vstack((span, -span))
-            if self.rays is None:
-                self.rays = span_rays
-            else:
-                self.rays = np.vstack((self.rays, span_rays))
-
-    # TODO need to confirm terminology of these
-    def is_hull(self):
-        return self.rays is None and self.vertices is not None
-
-    def is_cone(self):
-        return self.rays is not None and self.vertices is None
-
-    @property
-    def nv(self):
-        return self.vertices.shape[0] if self.vertices is not None else 0
-
-    @property
-    def nr(self):
-        return self.rays.shape[0] if self.rays is not None else 0
-
-    @property
-    def dim(self):
-        dim = None
-        if self.vertices is not None:
-            dim = self.vertices.shape[1]
-        if self.rays is not None:
-            dim = self.rays.shape[1]
-        return dim
-
-    @classmethod
-    def from_cdd_matrix(cls, mat):
-        M = np.array([mat[i] for i in range(mat.row_size)])
-        if mat.row_size == 0:
-            return None
-
-        # # we are assuming a closed polyhedron, so there are no rays
-        # t = M[:, 0]
-        # assert np.allclose(t, 1.0)
-        #
-        # # vertices
-        # vertices = M[:, 1:]
-        # return cls(vertices)
-
-        t = M[:, 0]
-        v_mask = np.isclose(t, 1.0)
-        r_mask = np.isclose(t, 0.0)
-        s_mask = np.zeros_like(r_mask, dtype=bool)
-
-        # handle linear spans
-        lin_idx = np.array([idx for idx in mat.lin_set])
-        if len(lin_idx) > 0:
-            assert np.allclose(t[lin_idx], 0.0)
-            s_mask[lin_idx] = True
-            r_mask[lin_idx] = False
-
-        vertices = M[v_mask, 1:] if np.any(v_mask) else None
-        rays = M[r_mask, 1:] if np.any(r_mask) else None
-        span = M[s_mask, 1:] if np.any(s_mask) else None
-        return cls(vertices=vertices, rays=rays, span=span)
-
-    def to_cdd_matrix(self):
-        # n = self.vertices.shape[0]
-        # Smat = cdd.Matrix(np.hstack((np.ones((n, 1)), self.vertices)))
-        # Smat.rep_type = cdd.RepType.GENERATOR
-        # return Smat
-
-        n = self.nv + self.nr
-        S = np.zeros((n, self.dim + 1))
-        if self.vertices is not None:
-            S[:self.nv, 0] = 1.0
-            S[:self.nv, 1:] = self.vertices
-        if self.rays is not None:
-            S[self.nv:, 0] = 0.0
-            S[self.nv:, 1:] = self.rays
-        Smat = cdd.Matrix(S)
-        Smat.rep_type = cdd.RepType.GENERATOR
-        return Smat
-
-    def canonical(self):
-        """Convert to canonical non-redundant representation.
-
-        In other words, take the convex hull of the vertices.
-
-        Returns
-        -------
-        : SpanForm
-            A canonicalized version of the span form.
-        """
-        Smat = self.to_cdd_matrix()
-        Smat.canonicalize()
-        return self.from_cdd_matrix(Smat)
-
-    def __repr__(self):
-        return f"SpanForm(vertices={self.vertices}, rays={self.rays})"
-
-    def to_face_form(self):
-        Smat = self.to_cdd_matrix()
-        poly = cdd.Polyhedron(Smat)
-        Fmat = poly.get_inequalities()
-        return FaceForm.from_cdd_matrix(Fmat)
-
-
-class FaceForm:
-    """Face form (H-rep) of a convex polyhedron."""
-
-    def __init__(self, A_ineq, b_ineq, A_eq=None, b_eq=None):
-        # we use an inequality-only representation, where equalities are
-        # represented by two-sided inequalities
-        if A_eq is not None:
-            assert A_eq.shape[0] == b_eq.shape[0]
-            self.A = np.vstack((A_ineq, A_eq, -A_eq))
-            self.b = np.concatenate((b_ineq, b_eq, -b_eq))
-        else:
-            self.A = A_ineq
-            self.b = b_ineq
-
-    @classmethod
-    def from_cdd_matrix(cls, mat):
-        M = np.array([mat[i] for i in range(mat.row_size)])
-        b = M[:, 0]
-        A = -M[:, 1:]
-
-        ineq_idx = np.array(
-            [idx for idx in range(mat.row_size) if idx not in mat.lin_set]
-        )
-        eq_idx = np.array([idx for idx in mat.lin_set])
-
-        return cls(
-            A_ineq=A[ineq_idx, :],
-            b_ineq=b[ineq_idx],
-            A_eq=A[eq_idx, :] if len(eq_idx) > 0 else None,
-            b_eq=b[eq_idx] if len(eq_idx) > 0 else None,
-        )
-
-    def to_cdd_matrix(self):
-        # face form is Ax <= b, which cdd stores as one matrix [b -A]
-        F = np.hstack((self.b[:, None], -self.A))
-        Fmat = cdd.Matrix(F)
-        Fmat.rep_type = cdd.RepType.INEQUALITY
-        return Fmat
-
-    def __repr__(self):
-        return f"FaceForm(A={self.A}, b={self.b})"
-
-    def stack(self, other):
-        """Combine two face forms together."""
-        A = np.vstack((self.A, other.A))
-        b = np.concatenate((self.b, other.b))
-        return FaceForm(A_ineq=A, b_ineq=b)
-
-    def to_span_form(self):
-        """Convert to span form (V-rep)."""
-        Fmat = self.to_cdd_matrix()
-        poly = cdd.Polyhedron(Fmat)
-        Smat = poly.get_generators()
-        return SpanForm.from_cdd_matrix(Smat)
-
-
 class ConvexPolyhedron:
     """A convex polyhedron in ``dim`` dimensions.
 
@@ -276,6 +98,9 @@ class ConvexPolyhedron:
         if span_form is None:
             span_form = face_form.to_span_form()
 
+        if not span_form.bounded():
+            raise ValueError("Only bounded polyhedra are supported.")
+
         self.span_form = span_form
         self.face_form = face_form
 
@@ -291,13 +116,13 @@ class ConvexPolyhedron:
             If ``True``, the vertices will be pruned to eliminate any
             non-extremal points.
         """
-        span_form = SpanForm(vertices)
+        span_form = SpanForm(vertices=vertices)
         if prune:
             span_form = span_form.canonical()
         return cls(span_form=span_form)
 
     @classmethod
-    def from_halfspaces(cls, A, b):
+    def from_halfspaces(cls, A, b, prune=False):
         """Construct the polyhedron from a set of halfspaces.
 
         The polyhedron is the set {x | Ax <= b}. For degenerate cases with
@@ -310,8 +135,13 @@ class ConvexPolyhedron:
             The matrix of halfspace normals.
         b : np.ndarray
             The vector of halfspace offsets.
+        prune : bool
+            If ``True``, the halfspaces will be pruned to eliminate any
+            redundancies.
         """
         face_form = FaceForm(A_ineq=A, b_ineq=b)
+        if prune:
+            face_form = face_form.canonical()
         return cls(face_form=face_form)
 
     def __repr__(self):
@@ -328,19 +158,24 @@ class ConvexPolyhedron:
         return self.face_form.b
 
     @property
+    def nf(self):
+        """Number of faces."""
+        return self.face_form.nf
+
+    @property
     def vertices(self):
         """The extremal points of the polyhedron."""
         return self.span_form.vertices
 
     @property
     def nv(self):
-        """The number of vertices."""
-        return self.vertices.shape[0]
+        """Number of vertices."""
+        return self.span_form.nv
 
     @property
     def dim(self):
         """The dimension of the ambient space."""
-        return self.vertices.shape[1]
+        return self.span_form.dim
 
     def contains(self, points, tol=1e-8):
         """Test if the polyhedron contains a set of points.
@@ -448,6 +283,7 @@ class ConvexPolyhedron:
         : np.ndarray, shape (N, self.dim)
             The points contained in the grid.
         """
+        # TODO it would be better to find the minimum oriented bounding box
         box_grid = self.aabb().grid(n)
         contained = self.contains(box_grid)
         return box_grid[contained, :]
@@ -914,7 +750,9 @@ class Ellipsoid:
             res1 = np.all(np.isclose(ps[:, zero_mask], 0, rtol=0, atol=tol), axis=1)
 
             # nondegenerate dimensions
-            res2 = np.array([p[~zero_mask] @ Einv_diag @ p[~zero_mask] <= 1 + tol for p in ps])
+            res2 = np.array(
+                [p[~zero_mask] @ Einv_diag @ p[~zero_mask] <= 1 + tol for p in ps]
+            )
 
             # combine them
             return np.logical_and(res1, res2)
@@ -1078,7 +916,9 @@ class Cylinder:
         return np.all([E.contains(points) for E in self._ellipsoids], axis=0)
 
     def must_contain(self, points, scale=1.0):
-        return [c for E in self._ellipsoids for c in E.must_contain(points, scale=scale)]
+        return [
+            c for E in self._ellipsoids for c in E.must_contain(points, scale=scale)
+        ]
 
     def inscribed_box(self):
         # TODO need tests for these
