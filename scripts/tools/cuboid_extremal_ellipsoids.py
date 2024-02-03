@@ -6,14 +6,16 @@ import inertial_params as ip
 def main():
     cuboid_half_extents = 0.5 * np.array([0.1, 0.1, 0.4])
     box = ip.Box(cuboid_half_extents)
-    ell_outer = ip.minimum_bounding_ellipsoid(box.vertices)
-    ell_inner = ip.maximum_inscribed_ellipsoid(box.vertices)
+    ell_outer = box.minimum_bounding_ellipsoid()
+    ell_inner = box.maximum_inscribed_ellipsoid()
+    print(f"Bounding ellipsoid half extents = {ell_outer.half_extents}")
+    print(f"Inscribed ellipsoid half extents = {ell_inner.half_extents}")
 
-    r1, V1 = ell_outer.axes()
-    print(f"Bounding ellipsoid half extents = {r1}")
+    params = box.vertex_point_mass_params(mass=1.0)
+    print(params.I)
 
-    r2, V2 = ell_inner.axes()
-    print(f"Inscribed ellipsoid half extents = {r2}")
+    import IPython
+    IPython.embed()
 
 
 main()

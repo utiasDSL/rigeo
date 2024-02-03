@@ -5,7 +5,7 @@ import inertial_params as ip
 def test_inertial_params_addition():
     mass = 1.0
     h = np.zeros(3)
-    I = ip.cuboid_inertia_matrix(mass=mass, half_extents=[0.5, 0.5, 0.5])
+    I = ip.Box(half_extents=[0.5, 0.5, 0.5]).uniform_density_params(mass).I
     H = ip.I2H(I)
 
     p1 = ip.InertialParameters(mass=mass, h=h, H=H)
@@ -29,7 +29,7 @@ def test_inertial_params_addition():
 def test_inertial_params_representations():
     mass = 1.0
     h = np.array([1, 2, 3])
-    Ic = ip.cuboid_inertia_matrix(mass=mass, half_extents=[0.5, 0.5, 0.5])
+    Ic = ip.Box(half_extents=[0.5, 0.5, 0.5]).uniform_density_params(mass).I
     H = ip.I2H(Ic) + np.outer(h, h) / mass
 
     p1 = ip.InertialParameters(mass=mass, h=h, H=H)

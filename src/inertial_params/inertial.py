@@ -5,7 +5,7 @@ import inertial_params.util as util
 from inertial_params.random import random_psd_matrix
 
 
-def cuboid_inertia_matrix(mass, half_extents):
+def box_inertia_matrix(mass, half_extents):
     """Inertia matrix for a rectangular cuboid."""
     lx, ly, lz = 2 * np.array(half_extents)
     xx = ly**2 + lz**2
@@ -64,10 +64,10 @@ class InertialParameters:
     ----------
     mass : float
         Mass of the body.
-    com : iterable
-        Center of mass of the body w.r.t. to some reference point O.
-    I : np.ndarray
-        3x3 inertia matrix about w.r.t. O
+    h : np.ndarry, shape (3,)
+        First moment of mass.
+    H : np.ndarray, shape (3, 3)
+        Second moment matrix.
     """
 
     def __init__(self, mass, h, H, tol=1e-7):
@@ -192,6 +192,16 @@ class InertialParameters:
         h = mass * com
         H = random_psd_matrix((3, 3)) + mass * np.outer(com, com)
         return cls(mass=mass, h=h, H=H)
+
+    def transform(self, rotation=None, translation=None):
+        if rotation is None:
+            rotation = np.eye(3)
+        if translation is None:
+            translation = np.zeros(3)
+
+        h = rotation @ self.h + self.mass * translation
+        H = rotation @ self.Hc @ rotation.T + np.outer(h, h) / self.mass
+        return InertialParameters(mass=self.mass, h=h, H=H)
 
     def __add__(self, other):
         return InertialParameters(
