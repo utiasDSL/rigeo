@@ -1,8 +1,9 @@
 import numpy as np
+from spatialmath.base import rotz
 import inertial_params as ip
 
 
-def test_inertial_params_addition():
+def test_addition():
     mass = 1.0
     h = np.zeros(3)
     I = ip.Box(half_extents=[0.5, 0.5, 0.5]).uniform_density_params(mass).I
@@ -26,7 +27,7 @@ def test_inertial_params_addition():
     assert np.allclose(p_sum.θ, p1.θ + p2.θ)
 
 
-def test_inertial_params_representations():
+def test_representations():
     mass = 1.0
     h = np.array([1, 2, 3])
     Ic = ip.Box(half_extents=[0.5, 0.5, 0.5]).uniform_density_params(mass).I
@@ -37,7 +38,25 @@ def test_inertial_params_representations():
     p3 = ip.InertialParameters.from_pseudo_inertia_matrix(p1.J)
     p4 = ip.InertialParameters.from_mcI(mass=p1.mass, com=p1.com, I=p1.I)
 
-    assert np.allclose(p2.J, p1.J)
-    assert np.allclose(p3.J, p1.J)
-    assert np.allclose(p4.J, p1.J)
+    assert p2.is_same(p1)
+    assert p3.is_same(p1)
+    assert p4.is_same(p1)
 
+
+def test_transform():
+    mass = 1.0
+    box = ip.Box(half_extents=np.ones(3))
+    params = box.vertex_point_mass_params(mass)
+
+    # rotation only
+    C = rotz(np.pi / 4)
+    box2 = box.transform(rotation=C)
+    params2 = params.transform(rotation=C)
+    assert params2.is_same(box2.vertex_point_mass_params(mass))
+
+    # rotation and translation
+    C = rotz(np.pi / 4)
+    r = np.array([1, 0.5, 0])
+    box3 = box.transform(rotation=C, translation=r)
+    params3 = params.transform(rotation=C, translation=r)
+    assert params3.is_same(box3.vertex_point_mass_params(mass))

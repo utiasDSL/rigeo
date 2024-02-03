@@ -75,6 +75,10 @@ class Shape(abc.ABC):
     def transform(self):
         pass
 
+    @abc.abstractmethod
+    def is_same(self):
+        pass
+
 
 class ConvexPolyhedron:
     """A convex polyhedron in ``dim`` dimensions.
@@ -221,7 +225,7 @@ class ConvexPolyhedron:
         return [self.A @ p <= scale * self.b for p in points]
 
     def contains_polyhedron(self, other, tol=1e-8):
-        """Test if this polyhedron contains another one.
+        """Check if this polyhedron contains another one.
 
         Parameters
         ----------
@@ -236,6 +240,25 @@ class ConvexPolyhedron:
             ``True`` if this polyhedron contains the other, ``False`` otherwise.
         """
         return self.contains(other.vertices, tol=tol).all()
+
+    def is_same(self, other, tol=1e-8):
+        """Check if this polyhedron is the same as another one.
+
+        Parameters
+        ----------
+        other : ConvexPolyhedron
+            The other polyhedron to check.
+        tol : float, non-negative
+            The numerical tolerance for membership.
+
+        Returns
+        -------
+        : bool
+            ``True`` if the polyhedra are the same, ``False`` otherwise.
+        """
+        return self.contains_polyhedron(other, tol=tol) and other.contains_polyhedron(
+            self, tol=tol
+        )
 
     def random_points(self, shape=1):
         """Generate random points contained in the polyhedron.
@@ -559,12 +582,16 @@ class Box(ConvexPolyhedron):
         """
         assert mass >= 0, "Mass must be non-negative."
 
-        # TODO could replace this with InertialParameters.transform
-        R = self.rotation
-        Hc = mass * np.diag(self.half_extents**2) / 3.0
-        H = R @ Hc @ R.T + mass * np.outer(self.center, self.center)
-        h = mass * self.center
-        return InertialParameters(mass=mass, h=h, H=H)
+        # R = self.rotation
+
+        H = mass * np.diag(self.half_extents**2) / 3.0
+        return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
+            rotation=self.rotation, translation=self.center
+        )
+
+        # H = R @ Hc @ R.T + mass * np.outer(self.center, self.center)
+        # h = mass * self.center
+        # return InertialParameters(mass=mass, h=h, H=H)
 
 
 class Ellipsoid:

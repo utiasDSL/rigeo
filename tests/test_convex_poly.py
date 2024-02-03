@@ -6,11 +6,6 @@ import pytest
 import inertial_params as ip
 
 
-def polyhedra_same(poly1, poly2):
-    """Check if two polyhedra are the same."""
-    return poly1.contains_polyhedron(poly2) and poly2.contains_polyhedron(poly1)
-
-
 def test_aabb():
     box = ip.Box(half_extents=[0.5, 0.5, 0.5])
     poly = ip.ConvexPolyhedron.from_vertices(box.vertices)
@@ -41,17 +36,17 @@ def test_intersection():
     intersection = box1.intersect(box1)
 
     # intersection with self is self
-    assert polyhedra_same(intersection, box1)
+    assert intersection.is_same(box1)
 
     box2 = ip.Box(half_extents=np.ones(3), center=1.9 * np.ones(3))
     intersection = box1.intersect(box2)
     box_expected = ip.Box(half_extents=0.05 * np.ones(3), center=0.95 * np.ones(3))
-    assert polyhedra_same(intersection, box_expected)
+    assert intersection.is_same(box_expected)
 
     # order of intersection doesn't matter
-    assert polyhedra_same(intersection, box2.intersect(box1))
+    assert intersection.is_same(box2.intersect(box1))
 
-    assert polyhedra_same(intersection, box1.intersect(intersection))
+    assert intersection.is_same(box1.intersect(intersection))
 
     # no overlap
     box3 = ip.Box(half_extents=np.ones(3), center=[2.1, 0, 0])
@@ -63,7 +58,7 @@ def test_intersection():
     expected = ip.ConvexPolyhedron.from_vertices(
         [[1, 1, 1], [1, 0.9, 1], [0.9, 0.9, 1], [0.9, 1, 1]]
     )
-    assert polyhedra_same(intersection, expected)
+    assert intersection.is_same(expected)
 
 
 def test_degenerate():
@@ -81,7 +76,7 @@ def test_degenerate():
     # ensure we recover the same vertices when going back to span form from
     # inequality-only face form
     poly2 = ip.ConvexPolyhedron(span_form=poly.face_form.to_span_form())
-    assert polyhedra_same(poly2, poly)
+    assert poly2.is_same(poly)
 
 
 def test_unbounded():

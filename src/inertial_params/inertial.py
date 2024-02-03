@@ -193,6 +193,21 @@ class InertialParameters:
         H = random_psd_matrix((3, 3)) + mass * np.outer(com, com)
         return cls(mass=mass, h=h, H=H)
 
+    def is_same(self, other):
+        """Check if this set of inertial parameters is the same as another.
+
+        Parameters
+        ----------
+        other : InertialParameters
+            The other set of inertial parameters to check.
+
+        Returns
+        -------
+        : bool
+            ``True`` if they are the same, ``False`` otherwise.
+        """
+        return np.allclose(self.J, other.J)
+
     def transform(self, rotation=None, translation=None):
         if rotation is None:
             rotation = np.eye(3)
