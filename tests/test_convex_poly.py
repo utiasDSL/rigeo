@@ -88,11 +88,19 @@ def test_unbounded():
 
 
 def test_grid():
-    pass
+    np.random.seed(0)
+
+    # random polyhedron
+    vertices = np.random.random((10, 3))
+    poly = ip.ConvexPolyhedron.from_vertices(vertices, prune=True)
+    grid = poly.grid(10)
+    assert poly.contains(grid).all()
 
 
 def test_must_contain():
-    poly = ip.ConvexPolyhedron.from_vertices([[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]])
+    poly = ip.ConvexPolyhedron.from_vertices(
+        [[0, 0, 0], [1, 0, 0], [0, 1, 0], [0, 0, 1]]
+    )
     point = cp.Variable(3)
 
     objective = cp.Maximize(point[0])

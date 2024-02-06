@@ -208,6 +208,19 @@ class InertialParameters:
         """
         return np.allclose(self.J, other.J)
 
+    def consistent(self, tol=1e-8):
+        """Check if the inertial parameters are fully physically consistent.
+
+        This means that there exists a physical rigid body that can have these
+        parameters.
+
+        Returns
+        -------
+        : bool
+            ``True`` if the parameters are consistent, ``False`` otherwise.
+        """
+        return np.min(np.linalg.eigvals(self.J)) >= -tol
+
     def transform(self, rotation=None, translation=None):
         if rotation is None:
             rotation = np.eye(3)

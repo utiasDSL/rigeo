@@ -26,3 +26,33 @@ def random_weight_vectors(shape):
     w = np.random.random(shape)
     s = np.expand_dims(np.sum(w, axis=-1), axis=w.ndim - 1)
     return w / s
+
+
+def random_points_on_hypersphere(shape=1, dim=2):
+    """Sample random uniform-distributed points on the ``dim``-sphere.
+
+    See https://compneuro.uwaterloo.ca/files/publications/voelker.2017.pdf
+    """
+    assert dim >= 1
+    if type(shape) is int:
+        shape = (shape,)
+    shape = shape + (dim + 1,)
+    X = np.random.normal(size=shape)
+
+    # make dimension compatible with X
+    r = np.expand_dims(np.linalg.norm(X, axis=-1), axis=X.ndim - 1)
+
+    # squeeze out extra dimension if applicable (i.e., shape=1)
+    return np.squeeze(X / r)
+
+
+def random_points_in_ball(shape=1, dim=3):
+    """Sample random uniform-distributed points in the ``dim``-ball.
+
+    See https://compneuro.uwaterloo.ca/files/publications/voelker.2017.pdf
+    """
+    assert dim >= 1
+
+    s = random_points_on_hypersphere(shape=shape, dim=dim - 1)
+    c = np.expand_dims(np.random.random(shape), axis=s.ndim - 1)
+    return np.squeeze(c ** (1.0 / dim) * s)
