@@ -271,3 +271,21 @@ def test_aabb():
         problem = cp.Problem(objective, constraints)
         problem.solve()
         assert box.contains(p.value)
+
+
+def test_contains_ellipsoid():
+    # TODO more testing
+    ell1 = ip.Ellipsoid(half_extents=[2, 1, 1])
+    ell2 = ip.Ellipsoid(half_extents=[1, 1, 1])
+    ell3 = ip.Ellipsoid(half_extents=[1, 1.1, 1])
+    assert ell1.contains_ellipsoid(ell2)
+    assert not ell1.contains_ellipsoid(ell3)
+
+
+def test_mbe_of_ellipsoids():
+    ell1 = ip.Ellipsoid(half_extents=[2, 1, 1], center=[1, 1, 0])
+    ell2 = ip.Ellipsoid(half_extents=[0.5, 1.5, 1], center=[-0.5, 0, 0.5])
+    ell = ip.mbe_of_ellipsoids([ell1, ell2])
+
+    assert ell.contains_ellipsoid(ell1)
+    assert ell.contains_ellipsoid(ell2)

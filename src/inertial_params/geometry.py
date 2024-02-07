@@ -5,7 +5,7 @@ from dataclasses import dataclass
 
 import numpy as np
 import cvxpy as cp
-from scipy.linalg import orth
+from scipy.linalg import orth, sqrtm
 
 from inertial_params.polydd import SpanForm, FaceForm
 from inertial_params.util import schur
@@ -246,7 +246,7 @@ class Shape(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def is_same(self, tol=1e-8):
+    def is_same(self, other, tol=1e-8):
         """Check if this shape is the same as another one.
 
         Parameters
@@ -384,9 +384,9 @@ class ConvexPolyhedron(Shape):
         )
 
     def random_points(self, shape=1):
-        if type(shape) is int:
+        if np.isscalar(shape):
             shape = (shape,)
-        shape = shape + (self.nv,)
+        shape = tuple(shape) + (self.nv,)
         w = random_weight_vectors(shape)
         return w @ self.vertices
 
@@ -956,6 +956,24 @@ class Ellipsoid(Shape):
             half_extents=half_extents, rotation=new_rotation, center=center
         )
 
+    def contains_ellipsoid(self, other):
+        # See Boyd and Vandenberghe pp. 411
+        # TODO does not work for degenerate ellipsoids
+        t = cp.Variable(1)
+        objective = cp.Minimize([0])  # feasibility problem
+        constraints = [
+            t >= 0,
+            schur(
+                self.Einv - t * other.A,
+                self.A @ self.b - t * self.b,
+                self.b @ self.b - 1 - t * (other.b @ other.b - 1),
+            )
+            << 0,
+        ]
+        problem = cp.Problem(objective, constraints)
+        problem.solve()
+        return problem.status == "optimal"
+
     def uniform_density_params(self, mass):
         assert mass >= 0, "Mass must be non-negative."
 
@@ -1134,26 +1152,148 @@ class Cylinder(Shape):
             rotation=self.rotation, translation=self.center
         )
 
+    def capsule(self):
+        """Generate a capsule from this cylinder.
 
-class Capsule:
+        Returns
+        -------
+        : Capsule
+            The capsule built from this cylinder. That is, this cylinder with
+            two semispheres on the ends.
+        """
+        return Capsule(self)
+
+
+class Capsule(Shape):
     """A capsule in three dimensions.
 
     Parameters
     ----------
-    length : float, non-negative
-        The length along the longitudinal axis.
-    radius : float, non-negative
-        The radius of the transverse cross-section.
-    rotation : np.ndarray, shape (3, 3)
-        Rotation matrix, where identity means the z-axis is the longitudinal
-        axis.
-    center : np.ndarray, shape (3,)
-        The center of the cylinder. If not provided, defaults to the origin.
+    cylinder : Cylinder
+        The cylinder to build the capsule from.
     """
 
-    def __init__(self, length, radius, rotation=None, center=None):
-        # TODO same API as the cylinder
-        pass
+    def __init__(self, cylinder):
+        self.cylinder = cylinder
+        self.caps = [
+            Ellipsoid.sphere(radius=cylinder.radius, center=end)
+            for end in cylinder.endpoints()
+        ]
+
+        self._shapes = self.caps + [self.cylinder]
+
+    @property
+    def center(self):
+        return self.cylinder.center
+
+    @property
+    def rotation(self):
+        return self.cylinder.rotation
+
+    @property
+    def inner_length(self):
+        return self.cylinder.length
+
+    @property
+    def radius(self):
+        return self.cylinder.radius
+
+    @property
+    def full_length(self):
+        return self.inner_length + 2 * self.radius
+
+    def is_same(self, other, tol=1e-8):
+        if not isinstance(other, self.__class__):
+            return False
+        return self.cylinder.is_same(other.cylinder, tol=tol)
+
+    def contains(self, points, tol=1e-8):
+        contains = [shape.contains(points, tol=tol) for shape in self._shapes]
+        return np.any(contains, axis=0)
+
+    def must_contain(self, points, scale=1.0):
+        if points.ndim == 1:
+            points = [points]
+
+        constraints = []
+        for point in points:
+            p1 = cp.Variable(3)
+            p2 = cp.Variable(3)
+            t = cp.Variable(1)
+            constraints.extend(
+                self.caps[0].must_contain(p1, scale=t)
+                + self.caps[1].must_contain(p2, scale=scale - t)
+                + [t >= 0, t <= scale, point == p1 + p2]
+            )
+        return constraints
+
+    def transform(self, rotation=None, translation=None):
+        new_cylinder = self.cylinder.transform(
+            rotation=rotation, translation=translation
+        )
+        return Capsule(cylinder=new_cylinder)
+
+    def can_realize(self, params, solver=None):
+        if not params.consistent():
+            return False
+
+        Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
+
+        objective = cp.Minimize([0])  # feasibility problem
+        constraints = [params.J == cp.sum(Js)] + [
+            c for J, shape in zip(Js, self._shapes) for c in shape.must_realize(J)
+        ]
+        problem = cp.Problem(objective, constraints)
+        problem.solver(solver=solver)
+        return problem.status == "optimal"
+
+    def must_realize(self, param_var, eps=0):
+        J, psd_contraints = _pim_from_param_var(param_var, eps)
+        Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
+        # TODO should eps be passed along to the shapes?
+        return psd_constraints + [
+            c for J, shape in zip(Js, self._shapes) for c in shape.must_realize(J)
+        ]
+
+    def aabb(self):
+        points = np.vstack([cap.aabb().vertices for cap in self.caps])
+        return Box.from_points_to_bound(points)
+
+    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False, solver=None):
+        return mbe_of_ellipsoids(self.caps, sphere=sphere, solver=solver)
+
+    def minimum_bounding_box(self):
+        half_extents = [self.radius, self.radius, self.full_length / 2]
+        return Box(
+            half_extents=half_extents, rotation=self.rotation, center=self.center
+        )
+
+    def random_points(self, shape=1):
+        mbb = self.minimum_bounding_box()
+        n = np.product(shape)
+
+        full = np.zeros(n, dtype=bool)
+        points = np.zeros((n, 3))
+        m = n
+        # import IPython
+        # IPython.embed()
+        while m > 0:
+            # generate as many points as we still need
+            candidates = mbb.random_points(m)
+
+            # check if they are contained in the actual shape
+            c = self.contains(candidates)
+
+            # use the points that are contained, storing them and marking them
+            # full
+            points[~full][c] = candidates[c]
+            full[~full] = c
+
+            # update count of remaining points to generate
+            m = n - np.sum(full)
+
+        # TODO need to reshape
+        return np.squeeze(points)
 
 
 def convex_hull(points, rcond=None):
@@ -1201,6 +1341,46 @@ def cube_inscribed_ellipsoid(half_extent):
     Returns the ellipsoid.
     """
     return Ellipsoid.sphere(half_extent)
+
+
+def _mbee_con_mat(Einv, d, Ai, bi, ti):
+    """Constraint matrix for minimum bounding ellipsoid of ellipsoids problem."""
+    dim = Einv.shape[0]
+    ci = bi @ bi - 1
+    Z = np.zeros((dim, dim))
+    f = cp.reshape(-1 - ti * ci, (1, 1))
+    e = cp.reshape(d - ti * bi, (dim, 1))
+    d = cp.reshape(d, (dim, 1))
+    # fmt: off
+    return cp.bmat([
+        [Einv - ti * Ai, e, Z],
+        [e.T, f, d.T],
+        [Z, d, -Einv]])
+    # fmt: on
+
+
+def mbe_of_ellipsoids(ellipsoids, sphere=False, solver=None):
+    n = len(ellipsoids)
+    dim = ellipsoids[0].dim
+
+    Einv = cp.Variable((dim, dim), PSD=True)  # = A^2
+    d = cp.Variable(dim)  # = Ab
+    ts = cp.Variable(n)
+
+    objective = cp.Minimize(-cp.log_det(Einv))
+    constraints = [ts >= 0] + [
+        _mbee_con_mat(Einv, d, E.A, E.b, ti) << 0 for E, ti in zip(ellipsoids, ts)
+    ]
+    if sphere:
+        # if we want a sphere, then Einv is a multiple of the identity matrix
+        a = cp.Variable(1)
+        constraints.append(Einv == a * np.eye(dim))
+    problem = cp.Problem(objective, constraints)
+    problem.solve(solver=solver)
+
+    A = sqrtm(Einv.value)
+    b = np.linalg.solve(A, d.value)
+    return Ellipsoid.from_Ab(A=A, b=b)
 
 
 def minimum_bounding_ellipsoid(points, rcond=None, sphere=False):
