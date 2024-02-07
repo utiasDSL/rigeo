@@ -973,7 +973,7 @@ class Ellipsoid(Shape):
         )
 
 
-class Cylinder:
+class Cylinder(Shape):
     """A cylinder in three dimensions.
 
     Parameters
@@ -1077,8 +1077,41 @@ class Cylinder:
             center=new_center,
         )
 
+    def endpoints(self):
+        """Get the two points at the ends of the longitudinal axis."""
+        h = 0.5 * self.length * self.longitudinal_axis
+        return np.array([h, -h]) + self.center
+
+    def aabb(self):
+        c = self.endpoints()
+        disk1 = Ellipsoid(
+            half_extents=[self.radius, self.radius, 0],
+            center=c[0],
+            rotation=self.rotation,
+        )
+        disk2 = Ellipsoid(
+            half_extents=[self.radius, self.radius, 0],
+            center=c[1],
+            rotation=self.rotation,
+        )
+        points = np.vstack((disk1.aabb().vertices, disk2.aabb().vertices))
+        return Box.from_points_to_bound(points)
+
+    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False):
+        return self.maximum_inscribed_box().minimum_bounding_ellipsoid(
+            rcond=rcond, sphere=sphere
+        )
+
+    def random_points(self, shape=1):
+        P_z = self.length * (np.random.random(shape) - 0.5)
+        P_xy = self.radius * random_points_in_ball(shape=shape, dim=2)
+        if shape == 1:
+            P = np.append(P_xy, P_z)
+        else:
+            P = np.hstack((P_xy, P_z[:, None]))
+        return P @ self.rotation.T + self.center
+
     def maximum_inscribed_box(self):
-        # TODO need tests for these
         r = self.radius / np.sqrt(2)
         half_extents = [r, r, self.length / 2]
         return Box(

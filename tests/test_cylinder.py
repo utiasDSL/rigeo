@@ -1,10 +1,11 @@
 import numpy as np
 import cvxpy as cp
+from spatialmath.base import rotx, roty, rotz
 
 import inertial_params as ip
 
 
-def test_cylinder_contains():
+def test_contains():
     cylinder = ip.Cylinder(length=1, radius=0.5)
 
     # a single point
@@ -24,7 +25,7 @@ def test_cylinder_contains():
     assert contained[0] and not contained[1]
 
 
-def test_cylinder_must_contain():
+def test_must_contain():
     cylinder = ip.Cylinder(length=1, radius=0.5)
     point = cp.Variable(3)
 
@@ -33,3 +34,92 @@ def test_cylinder_must_contain():
     problem = cp.Problem(objective, constraints)
     problem.solve()
     assert np.isclose(objective.value, 0.5)
+
+
+def test_aabb():
+    C = rotx(np.pi / 4) @ roty(np.pi / 6)
+    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
+    box = cyl.aabb()
+
+    # check that the point farther along each axis (in both directions) in the
+    # cylinder is contained in the AABB
+    vecs = np.vstack((np.eye(3), -np.eye(3)))
+    p = cp.Variable(3)
+    constraints = cyl.must_contain(p)
+    for v in vecs:
+        objective = cp.Maximize(v @ p)
+        problem = cp.Problem(objective, constraints)
+        problem.solve()
+        assert box.contains(p.value, tol=1e-7)
+
+
+def test_random_points():
+    np.random.seed(0)
+
+    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1])
+
+    # one point
+    point = cyl.random_points()
+    assert point.shape == (3,)
+    assert cyl.contains(point)
+
+    # multiple points
+    points = cyl.random_points(shape=10)
+    assert points.shape == (10, 3)
+    assert cyl.contains(points).all()
+
+    # test that the sampling is uniform by seeing if the number of points that
+    # fall in an inscribed box is proportional to its relative volume
+    n = 10000
+    points = cyl.random_points(shape=n)
+    inbox = cyl.maximum_inscribed_box()
+    n_box = np.sum(inbox.contains(points))
+
+    # accuracy can be increased by increasing n
+    assert np.isclose(n_box / n, inbox.volume / cyl.volume, rtol=0, atol=0.01)
+
+
+def test_maximum_inscribed_box():
+    C = rotx(np.pi / 4) @ roty(np.pi / 6)
+    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
+    inbox = cyl.maximum_inscribed_box()
+    assert np.allclose(inbox.center, cyl.center)
+    assert cyl.contains_polyhedron(inbox)
+
+    # vertices should all be at the extreme ends of the cylinder
+    h = (inbox.vertices - inbox.center) @ cyl.longitudinal_axis
+    assert np.allclose(np.abs(h), cyl.length / 2)
+
+
+def test_minimum_bounding_ellipsoid():
+    np.random.seed(0)
+
+    C = rotx(np.pi / 4) @ roty(np.pi / 6)
+    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
+    inbox = cyl.maximum_inscribed_box()
+    ell = cyl.minimum_bounding_ellipsoid()
+    assert np.allclose(ell.center, cyl.center)
+
+    # any bounding shape should contain an inscribed shape
+    assert ell.contains_polyhedron(inbox)
+
+    # should also contain any point in the shape
+    points = cyl.random_points(1000)
+    assert ell.contains(points).all()
+
+
+def test_minimum_bounding_box():
+    np.random.seed(0)
+
+    C = rotx(np.pi / 4) @ roty(np.pi / 6)
+    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
+    inbox = cyl.maximum_inscribed_box()
+    bbox = cyl.minimum_bounding_box()
+    assert np.allclose(bbox.center, cyl.center)
+
+    # any bounding shape should contain an inscribed shape
+    assert bbox.contains_polyhedron(inbox)
+
+    # should also contain any point in the shape
+    points = cyl.random_points(1000)
+    assert bbox.contains(points).all()

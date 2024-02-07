@@ -251,14 +251,14 @@ def test_ellipsoid_random_points():
 
 def test_grid():
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    ell = ip.Ellipsoid(half_extents=[2, 1, 0.5], center=[1, 0, 1], rotation=C)
+    ell = ip.Ellipsoid(half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C)
     grid = ell.grid(10)
     assert ell.contains(grid).all()
 
 
 def test_aabb():
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    ell = ip.Ellipsoid(half_extents=[2, 1, 0.5], center=[1, 0, 1], rotation=C)
+    ell = ip.Ellipsoid(half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C)
     box = ell.aabb()
 
     # check that the point farther along each axis (in both directions) in the
