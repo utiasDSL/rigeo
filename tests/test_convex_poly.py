@@ -1,5 +1,6 @@
 import numpy as np
 import cvxpy as cp
+from spatialmath.base import rotx, roty, rotz
 
 import pytest
 
@@ -108,3 +109,30 @@ def test_must_contain():
     problem = cp.Problem(objective, constraints)
     problem.solve()
     assert np.isclose(objective.value, 1.0)
+
+
+def test_random_points():
+    np.random.seed(0)
+
+    C = rotx(np.pi / 4) @ roty(np.pi / 6)
+    box = ip.Box(half_extents=[2, 1, 0.5], center=[1, 0, 1], rotation=C)
+
+    # one point
+    point = box.random_points()
+    assert point.shape == (3,)
+    assert box.contains(point)
+
+    # multiple points
+    points = box.random_points(shape=10)
+    assert points.shape == (10, 3)
+    assert box.contains(points).all()
+
+    # grid of points
+    points = box.random_points(shape=(10, 10))
+    assert points.shape == (10, 10, 3)
+    assert box.contains(points.reshape((100, 3))).all()
+
+    # grid with one dimension 1
+    points = box.random_points(shape=(10, 1))
+    assert points.shape == (10, 1, 3)
+    assert box.contains(points.reshape((10, 3))).all()

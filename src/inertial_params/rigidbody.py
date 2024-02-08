@@ -3,8 +3,10 @@ import cvxpy as cp
 import inertial_params.util as util
 
 
+# TODO the only real use of this seems to be as a container that permits
+# manipulation of shapes and inertial parameters together
 class RigidBody:
-    """A rigid body.
+    """A rigid body in three dimensions.
 
     The rigid body is defined by a list of shapes and a set of inertial parameters.
     """
@@ -29,17 +31,7 @@ class RigidBody:
         """Check if the rigid body is density realizable."""
         pass
 
-    # TODO this doesn't really make sense: need to pass in J
-    def must_realize(self):
-        """Generate the constraints required for a set of inertial parameters
-        to be realizable on the this rigid body.
-
-        Returns
-        -------
-        : list
-            A list of cvxpy constraints.
-        """
-        # assert isinstance(J, cp.Expression)
+    def transform(self, rotation=None, translation=None):
         pass
 
 

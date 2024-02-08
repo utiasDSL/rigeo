@@ -3,7 +3,7 @@ from spatialmath.base import rotx, roty, rotz
 import inertial_params as ip
 
 
-def test_axis_aligned_box_from_two_vertices():
+def test_from_two_vertices():
     v1 = np.array([0, 0, 0])
     v2 = np.array([1, 1, 1])
     box = ip.Box.from_two_vertices(v1, v2)
@@ -19,7 +19,7 @@ def test_axis_aligned_box_from_two_vertices():
     assert np.isclose(box.volume, 1)
 
 
-def test_axis_aligned_box_vertices():
+def test_vertices():
     h = np.array([0.5, 0.5, 0.5])
     box = ip.Box(h)
     assert np.allclose(np.max(box.vertices, axis=0), h)
@@ -31,7 +31,7 @@ def test_axis_aligned_box_vertices():
     assert np.allclose(np.min(box.vertices, axis=0), -h + c)
 
 
-def test_axis_aligned_box_contains():
+def test_contains():
     h = np.array([0.5, 0.5, 0.5])
     box = ip.Box(h)
     assert box.contains(box.vertices).all()
@@ -42,24 +42,14 @@ def test_axis_aligned_box_contains():
     assert not res.any()
 
 
-def test_axis_aligned_box_random_points():
-    np.random.seed(0)
-
-    h = np.array([0.5, 0.5, 0.5])
-    box = ip.Box(h)
-
-    points = box.random_points(10)
-    assert box.contains(points).all()
-
-
-def test_axis_aligned_box_from_points_to_bound():
+def test_from_points_to_bound():
     np.random.seed(0)
     points = np.random.random((100, 3))
     box = ip.Box.from_points_to_bound(points)
     assert box.contains(points).all()
 
 
-def test_axis_aligned_box_grid():
+def test_grid():
     box = ip.Box(half_extents=(1, 1, 1))
     n = 20
     points = box.grid(n)
@@ -67,7 +57,7 @@ def test_axis_aligned_box_grid():
     assert box.contains(points).all()
 
 
-def test_box_rotation():
+def test_rotation():
     C = rotz(np.pi / 8)
     half_extents = np.ones(3)
     box1 = ip.Box(half_extents=half_extents)

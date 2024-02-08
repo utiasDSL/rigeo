@@ -68,26 +68,36 @@ def test_random_points():
     assert points.shape == (10, 3)
     assert cyl.contains(points).all()
 
+    # grid of points
+    points = cyl.random_points(shape=(10, 10))
+    assert points.shape == (10, 10, 3)
+    assert cyl.contains(points.reshape((100, 3))).all()
+
+    # grid with one dimension 1
+    points = cyl.random_points(shape=(10, 1))
+    assert points.shape == (10, 1, 3)
+    assert cyl.contains(points.reshape((10, 3))).all()
+
     # test that the sampling is uniform by seeing if the number of points that
     # fall in an inscribed box is proportional to its relative volume
     n = 10000
     points = cyl.random_points(shape=n)
-    inbox = cyl.maximum_inscribed_box()
-    n_box = np.sum(inbox.contains(points))
+    mib = cyl.mib()
+    n_box = np.sum(mib.contains(points))
 
     # accuracy can be increased by increasing n
-    assert np.isclose(n_box / n, inbox.volume / cyl.volume, rtol=0, atol=0.01)
+    assert np.isclose(n_box / n, mib.volume / cyl.volume, rtol=0, atol=0.01)
 
 
 def test_maximum_inscribed_box():
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
     cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
-    inbox = cyl.maximum_inscribed_box()
-    assert np.allclose(inbox.center, cyl.center)
-    assert cyl.contains_polyhedron(inbox)
+    mib = cyl.mib()
+    assert np.allclose(mib.center, cyl.center)
+    assert cyl.contains_polyhedron(mib)
 
     # vertices should all be at the extreme ends of the cylinder
-    h = (inbox.vertices - inbox.center) @ cyl.longitudinal_axis
+    h = (mib.vertices - mib.center) @ cyl.longitudinal_axis
     assert np.allclose(np.abs(h), cyl.length / 2)
 
 
@@ -96,12 +106,12 @@ def test_minimum_bounding_ellipsoid():
 
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
     cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
-    inbox = cyl.maximum_inscribed_box()
+    mib = cyl.mib()
     ell = cyl.minimum_bounding_ellipsoid()
     assert np.allclose(ell.center, cyl.center)
 
     # any bounding shape should contain an inscribed shape
-    assert ell.contains_polyhedron(inbox)
+    assert ell.contains_polyhedron(mib)
 
     # should also contain any point in the shape
     points = cyl.random_points(1000)
@@ -113,13 +123,13 @@ def test_minimum_bounding_box():
 
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
     cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
-    inbox = cyl.maximum_inscribed_box()
-    bbox = cyl.minimum_bounding_box()
-    assert np.allclose(bbox.center, cyl.center)
+    mib = cyl.mib()
+    mbb = cyl.mbb()
+    assert np.allclose(mbb.center, cyl.center)
 
     # any bounding shape should contain an inscribed shape
-    assert bbox.contains_polyhedron(inbox)
+    assert mbb.contains_polyhedron(mib)
 
     # should also contain any point in the shape
     points = cyl.random_points(1000)
-    assert bbox.contains(points).all()
+    assert mbb.contains(points).all()

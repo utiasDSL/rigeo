@@ -48,6 +48,16 @@ def test_random_points_on_hypersphere():
     points = ip.random_points_on_hypersphere(shape=10, dim=3)
     assert np.allclose(np.linalg.norm(points, axis=-1), 1.0)
 
+    # grid of points
+    points = ip.random_points_on_hypersphere(shape=(10, 10), dim=2)
+    assert points.shape == (10, 10, 3)
+    assert np.allclose(np.linalg.norm(points, axis=-1), 1.0)
+
+    # grid with one dimension 1
+    points = ip.random_points_on_hypersphere(shape=(10, 1), dim=2)
+    assert points.shape == (10, 1, 3)
+    assert np.allclose(np.linalg.norm(points, axis=-1), 1.0)
+
 
 def test_random_points_in_ball():
     np.random.seed(0)
@@ -65,6 +75,16 @@ def test_random_points_in_ball():
     # hyperball
     points = ip.random_points_in_ball(shape=10, dim=4)
     assert points.shape == (10, 4)
+    assert np.all(np.linalg.norm(points, axis=-1) <= 1.0)
+
+    # grid of points
+    points = ip.random_points_in_ball(shape=(10, 10), dim=3)
+    assert points.shape == (10, 10, 3)
+    assert np.all(np.linalg.norm(points, axis=-1) <= 1.0)
+
+    # grid with one dimension 1
+    points = ip.random_points_in_ball(shape=(10, 1), dim=3)
+    assert points.shape == (10, 1, 3)
     assert np.all(np.linalg.norm(points, axis=-1) <= 1.0)
 
     # test that the sampling is uniform by seeing if the number of points that

@@ -1,6 +1,7 @@
 import numpy as np
 import cvxpy as cp
 from spatialmath.base import rotx, roty, rotz
+
 import inertial_params as ip
 
 
@@ -234,19 +235,25 @@ def test_ellipsoid_random_points():
     assert points.shape == (10, 3)
     assert ell.contains(points).all()
 
-    # TODO need inscribed cuboid first
+    # grid of points
+    points = ell.random_points(shape=(10, 10))
+    assert points.shape == (10, 10, 3)
+    assert ell.contains(points.reshape((100, 3))).all()
+
+    # grid with one dimension 1
+    points = ell.random_points(shape=(10, 1))
+    assert points.shape == (10, 1, 3)
+    assert ell.contains(points.reshape((10, 3))).all()
+
     # test that the sampling is uniform by seeing if the number of points that
     # fall in an inscribed box is proportional to its relative volume
-    # n = 10000
-    # points = ip.random_points_in_ball(shape=n, dim=3)
-    # inbox = ip.Box.cube(half_extent=1 / np.sqrt(3))
-    # n_box = np.sum(inbox.contains(points))
-    #
-    # vol_ball = 4 * np.pi / 3
-    # vol_box = inbox.volume
-    #
-    # # accuracy can be increased by increasing n
-    # assert np.isclose(n_box / n, vol_box / vol_ball, rtol=0, atol=0.01)
+    n = 10000
+    points = ell.random_points(shape=n)
+    mib = ell.mib()
+    n_box = np.sum(mib.contains(points))
+
+    # accuracy can be increased by increasing n
+    assert np.isclose(n_box / n, mib.volume / ell.volume, rtol=0, atol=0.01)
 
 
 def test_grid():
@@ -261,7 +268,31 @@ def test_aabb():
     ell = ip.Ellipsoid(half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C)
     box = ell.aabb()
 
-    # check that the point farther along each axis (in both directions) in the
+    # check that the point farthest along each axis (in both directions) in the
+    # ellipsoid is contained in the AABB
+    vecs = np.vstack((np.eye(3), -np.eye(3)))
+    p = cp.Variable(3)
+    constraints = ell.must_contain(p)
+    for v in vecs:
+        objective = cp.Maximize(v @ p)
+        problem = cp.Problem(objective, constraints)
+        problem.solve()
+        assert box.contains(p.value)
+
+
+def test_mib():
+    C = rotx(np.pi / 4) @ roty(np.pi / 6)
+    ell = ip.Ellipsoid(half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C)
+    box = ell.mib()
+    assert ell.contains_polyhedron(box)
+
+
+def test_mbb():
+    C = rotx(np.pi / 4) @ roty(np.pi / 6)
+    ell = ip.Ellipsoid(half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C)
+    box = ell.mbb()
+
+    # check that the point farthest along each axis (in both directions) in the
     # ellipsoid is contained in the AABB
     vecs = np.vstack((np.eye(3), -np.eye(3)))
     p = cp.Variable(3)

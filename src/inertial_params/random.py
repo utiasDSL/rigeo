@@ -34,16 +34,20 @@ def random_points_on_hypersphere(shape=1, dim=2):
     See https://compneuro.uwaterloo.ca/files/publications/voelker.2017.pdf
     """
     assert dim >= 1
-    if type(shape) is int:
+    if np.isscalar(shape):
         shape = (shape,)
-    shape = shape + (dim + 1,)
-    X = np.random.normal(size=shape)
+    full_shape = tuple(shape) + (dim + 1,)
+    X = np.random.normal(size=full_shape)
 
     # make dimension compatible with X
     r = np.expand_dims(np.linalg.norm(X, axis=-1), axis=X.ndim - 1)
 
-    # squeeze out extra dimension if applicable (i.e., shape=1)
-    return np.squeeze(X / r)
+    points = X / r
+
+    # squeeze out extra dimension if shape = 1
+    if shape == (1,):
+        return np.squeeze(points)
+    return points
 
 
 def random_points_in_ball(shape=1, dim=3):
@@ -55,4 +59,9 @@ def random_points_in_ball(shape=1, dim=3):
 
     s = random_points_on_hypersphere(shape=shape, dim=dim - 1)
     c = np.expand_dims(np.random.random(shape), axis=s.ndim - 1)
-    return np.squeeze(c ** (1.0 / dim) * s)
+    points = c ** (1.0 / dim) * s
+
+    # squeeze out extra dimension if shape = 1
+    if shape == 1:
+        return np.squeeze(points)
+    return points

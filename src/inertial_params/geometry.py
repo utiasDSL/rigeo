@@ -175,7 +175,7 @@ class Shape(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False):
+    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False, solver=None):
         """Generate an ellipsoid that bounds the shape.
 
         Parameters
@@ -386,20 +386,27 @@ class ConvexPolyhedron(Shape):
     def random_points(self, shape=1):
         if np.isscalar(shape):
             shape = (shape,)
-        shape = tuple(shape) + (self.nv,)
-        w = random_weight_vectors(shape)
-        return w @ self.vertices
+        full_shape = tuple(shape) + (self.nv,)
+        w = random_weight_vectors(full_shape)
+        points = w @ self.vertices
+        if shape == (1,):
+            return np.squeeze(points)
+        return points
 
     def aabb(self):
         return Box.from_points_to_bound(self.vertices)
 
-    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False):
+    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False, solver=None):
         """Construct the minimum-volume bounding ellipsoid for this polyhedron."""
-        return minimum_bounding_ellipsoid(self.vertices, rcond=rcond, sphere=sphere)
+        return minimum_bounding_ellipsoid(
+            self.vertices, rcond=rcond, sphere=sphere, solver=solver
+        )
 
-    def maximum_inscribed_ellipsoid(self, rcond=None, sphere=False):
+    def maximum_inscribed_ellipsoid(self, rcond=None, sphere=False, solver=None):
         """Construct the maximum-volume ellipsoid inscribed in this polyhedron."""
-        return maximum_inscribed_ellipsoid(self.vertices, rcond=rcond, sphere=sphere)
+        return maximum_inscribed_ellipsoid(
+            self.vertices, rcond=rcond, sphere=sphere, solver=solver
+        )
 
     def intersect(self, other):
         """Intersect this polyhedron with another one.
@@ -913,6 +920,20 @@ class Ellipsoid(Shape):
         radius = np.max(self.half_extents)
         return Ellipsoid.sphere(radius=radius, center=self.center)
 
+    def mbb(self):
+        """Minimum-volume bounding box."""
+        return Box(
+            half_extents=self.half_extents, center=self.center, rotation=self.rotation
+        )
+
+    def mib(self):
+        """Maximum-volume inscribed box."""
+        return Box(
+            half_extents=self.half_extents / np.sqrt(3),
+            center=self.center,
+            rotation=self.rotation,
+        )
+
     def aabb(self):
         v_max = self.center + np.sqrt(np.diag(self.E))
         v_min = self.center - np.sqrt(np.diag(self.E))
@@ -1115,28 +1136,27 @@ class Cylinder(Shape):
         points = np.vstack((disk1.aabb().vertices, disk2.aabb().vertices))
         return Box.from_points_to_bound(points)
 
-    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False):
-        return self.maximum_inscribed_box().minimum_bounding_ellipsoid(
-            rcond=rcond, sphere=sphere
+    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False, solver=None):
+        return self.mib().minimum_bounding_ellipsoid(
+            rcond=rcond, sphere=sphere, solver=solver
         )
 
     def random_points(self, shape=1):
         P_z = self.length * (np.random.random(shape) - 0.5)
         P_xy = self.radius * random_points_in_ball(shape=shape, dim=2)
-        if shape == 1:
-            P = np.append(P_xy, P_z)
-        else:
-            P = np.hstack((P_xy, P_z[:, None]))
+        if shape != 1:
+            P_z = np.expand_dims(P_z, axis=-1)
+        P = np.concatenate((P_xy, P_z), axis=-1)
         return P @ self.rotation.T + self.center
 
-    def maximum_inscribed_box(self):
+    def mib(self):
         r = self.radius / np.sqrt(2)
         half_extents = [r, r, self.length / 2]
         return Box(
             half_extents=half_extents, rotation=self.rotation, center=self.center
         )
 
-    def minimum_bounding_box(self):
+    def mbb(self):
         half_extents = [self.radius, self.radius, self.length / 2]
         return Box(
             half_extents=half_extents, rotation=self.rotation, center=self.center
@@ -1262,21 +1282,23 @@ class Capsule(Shape):
     def minimum_bounding_ellipsoid(self, rcond=None, sphere=False, solver=None):
         return mbe_of_ellipsoids(self.caps, sphere=sphere, solver=solver)
 
-    def minimum_bounding_box(self):
+    def mbb(self):
         half_extents = [self.radius, self.radius, self.full_length / 2]
         return Box(
             half_extents=half_extents, rotation=self.rotation, center=self.center
         )
 
     def random_points(self, shape=1):
-        mbb = self.minimum_bounding_box()
+        if np.isscalar(shape):
+            shape = (shape,)
+        shape = tuple(shape)
+
+        mbb = self.mbb()
         n = np.product(shape)
 
         full = np.zeros(n, dtype=bool)
         points = np.zeros((n, 3))
         m = n
-        # import IPython
-        # IPython.embed()
         while m > 0:
             # generate as many points as we still need
             candidates = mbb.random_points(m)
@@ -1292,8 +1314,10 @@ class Capsule(Shape):
             # update count of remaining points to generate
             m = n - np.sum(full)
 
-        # TODO need to reshape
-        return np.squeeze(points)
+        # back to original shape
+        if shape == (1,):
+            return np.squeeze(points)
+        return points.reshape(shape + (3,))
 
 
 def convex_hull(points, rcond=None):
@@ -1360,6 +1384,23 @@ def _mbee_con_mat(Einv, d, Ai, bi, ti):
 
 
 def mbe_of_ellipsoids(ellipsoids, sphere=False, solver=None):
+    """Minimum-volume bounding ellipsoid of a union of ellipsoids.
+
+    Parameters
+    ----------
+    ellipsoids : iterable of Ellipsoids
+        The union of ellipsoids to bound.
+    sphere : bool
+        ``True`` to force the bounding ellipsoid to be a sphere, ``False`` for
+        a general ellipsoid.
+    solver : str or None
+        The solver for cvxpy to use.
+
+    Returns
+    -------
+    : Ellipsoid
+        The minimum-volume bounding ellipsoid.
+    """
     n = len(ellipsoids)
     dim = ellipsoids[0].dim
 
@@ -1383,7 +1424,7 @@ def mbe_of_ellipsoids(ellipsoids, sphere=False, solver=None):
     return Ellipsoid.from_Ab(A=A, b=b)
 
 
-def minimum_bounding_ellipsoid(points, rcond=None, sphere=False):
+def minimum_bounding_ellipsoid(points, rcond=None, sphere=False, solver=None):
     """Compute the minimum bounding ellipsoid for a set of points.
 
     See Convex Optimization by Boyd & Vandenberghe, sec. 8.4.1.
@@ -1411,7 +1452,7 @@ def minimum_bounding_ellipsoid(points, rcond=None, sphere=False):
         r = cp.Variable(1)
         constraints.append(A == r * np.eye(dim))
     problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK)
+    problem.solve(solver=solver)
 
     # unproject back into the original space
     A = R @ A.value @ R.T
@@ -1419,8 +1460,7 @@ def minimum_bounding_ellipsoid(points, rcond=None, sphere=False):
     return Ellipsoid.from_Ab(A=A, b=b, rcond=rcond)
 
 
-# TODO add solver argument
-def _maximum_inscribed_ellipsoid_inequality_form(A, b, sphere=False):
+def _maximum_inscribed_ellipsoid_inequality_form(A, b, sphere=False, solver=None):
     """Compute the maximum inscribed ellipsoid for an inequality-form
     polyhedron P = {x | Ax <= b}.
 
@@ -1442,13 +1482,13 @@ def _maximum_inscribed_ellipsoid_inequality_form(A, b, sphere=False):
         r = cp.Variable(1)
         constraints.append(B == r * np.eye(dim))
     problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK)
+    problem.solve(solver=solver)
 
     E = B.value @ B.value
     return Ellipsoid.from_Einv(Einv=np.linalg.inv(E), center=c.value)
 
 
-def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False):
+def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False, solver=None):
     """Compute the maximum inscribed ellipsoid for a polyhedron represented by
     a set of vertices.
 
@@ -1466,7 +1506,7 @@ def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False):
     # vertices is full-rank
     face_form = SpanForm(P).to_face_form()
     ell = _maximum_inscribed_ellipsoid_inequality_form(
-        face_form.A, face_form.b, sphere=sphere
+        face_form.A, face_form.b, sphere=sphere, solver=solver
     )
 
     # unproject back into the original space

@@ -48,3 +48,13 @@ def test_random_points():
     points = cap.random_points(shape=10)
     assert points.shape == (10, 3)
     assert cap.contains(points).all()
+
+    # grid of points
+    points = cap.random_points(shape=(10, 10))
+    assert points.shape == (10, 10, 3)
+    assert cap.contains(points.reshape((100, 3))).all()
+
+    # grid with one dimension 1
+    points = cap.random_points(shape=(10, 1))
+    assert points.shape == (10, 1, 3)
+    assert cap.contains(points.reshape((10, 3))).all()
