@@ -101,13 +101,13 @@ def test_maximum_inscribed_box():
     assert np.allclose(np.abs(h), cyl.length / 2)
 
 
-def test_minimum_bounding_ellipsoid():
+def test_mbe():
     np.random.seed(0)
 
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
     cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
     mib = cyl.mib()
-    ell = cyl.minimum_bounding_ellipsoid()
+    ell = cyl.mbe()
     assert np.allclose(ell.center, cyl.center)
 
     # any bounding shape should contain an inscribed shape

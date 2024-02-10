@@ -53,7 +53,7 @@ def test_ellipsoid_degenerate_contains():
 def test_cube_bounding_ellipsoid():
     h = 0.5
     half_lengths = h * np.ones(3)
-    ell = ip.Box(half_lengths).minimum_bounding_ellipsoid()
+    ell = ip.Box(half_lengths).mbe()
     elld = ip.cube_bounding_ellipsoid(h)
     assert ell.is_same(elld)
 
@@ -66,7 +66,7 @@ def test_cube_bounding_ellipsoid_translated():
     points = ip.Box(half_lengths).vertices
     points += offset
 
-    ell = ip.minimum_bounding_ellipsoid(points)
+    ell = ip.mbe_of_points(points)
     elld = ip.cube_bounding_ellipsoid(h).transform(translation=offset)
     assert ell.is_same(elld)
 
@@ -79,7 +79,7 @@ def test_cube_bounding_ellipsoid_rotated():
     points = ip.Box(half_lengths).vertices
     points = (C @ points.T).T
 
-    ell = ip.minimum_bounding_ellipsoid(points)
+    ell = ip.mbe_of_points(points)
     elld = ip.cube_bounding_ellipsoid(h).transform(rotation=C)
     assert ell.is_same(elld)
 
@@ -89,13 +89,13 @@ def test_bounding_ellipoid_4d():
 
     dim = 4
     points = np.random.random((20, dim))
-    ell = ip.minimum_bounding_ellipsoid(points)
+    ell = ip.mbe_of_points(points)
     assert np.all(ell.contains(points))
 
 
 def test_bounding_ellipsoid_degenerate():
     points = np.array([[0.5, 0, 0], [-0.5, 0, 0]])
-    ell = ip.minimum_bounding_ellipsoid(points)
+    ell = ip.mbe_of_points(points)
     assert ell.rank == 1
     assert ell.degenerate()
     assert np.all(ell.contains(points))

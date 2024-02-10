@@ -1,10 +1,22 @@
+"""Generate random values."""
 import numpy as np
-from scipy.linalg import sqrtm
 
 
 def random_psd_matrix(n):
+    """Generate a random symmetric positive semidefinite matrix.
+
+    Parameters
+    ----------
+    n : int
+        Dimension of the matrix.
+
+    Returns
+    -------
+    : np.ndarray, shape (n, n)
+        A positive semidefinite matrix.
+    """
     A = 2 * np.random.random((n, n)) - 1
-    return sqrtm(A.T @ A)
+    return A.T @ A
 
 
 def random_weight_vectors(shape):

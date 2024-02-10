@@ -1,60 +1,66 @@
 import numpy as np
 
 import inertial_params.util as util
-# import inertial_params.geometry as geom
 from inertial_params.random import random_psd_matrix
 
 
-def box_inertia_matrix(mass, half_extents):
-    """Inertia matrix for a rectangular cuboid."""
-    lx, ly, lz = 2 * np.array(half_extents)
-    xx = ly**2 + lz**2
-    yy = lx**2 + lz**2
-    zz = lx**2 + ly**2
-    return mass * np.diag([xx, yy, zz]) / 12.0
-
-
-def cuboid_vertices_inertia_matrix(mass, half_extents):
-    """Inertia matrix for a set of equal-mass points at the vertices of a cuboid."""
-    # points = geom.Box(half_extents).vertices
-    raise NotImplementedError("want geom to depend on inertia")
-    masses = np.ones(8) / 8
-    return point_mass_system_inertia(masses, points)[1]
-
-
-def hollow_sphere_inertia_matrix(mass, radius):
-    """Inertia matrix for a hollow sphere."""
-    return mass * radius**2 * 2 / 3 * np.eye(3)
-
-
-def solid_sphere_inertia_matrix(mass, radius):
-    """Inertia matrix for a hollow sphere."""
-    return mass * radius**2 * 2 / 5 * np.eye(3)
-
-
-def point_mass_system_inertia(masses, points):
-    """Inertia matrix corresponding to a finite set of point masses."""
-    H = np.zeros((3, 3))
-    for m, p in zip(masses, points):
-        H += m * np.outer(p, p)
-    return H, H2I(H)
-
-
-def point_mass_system_h(masses, points):
-    return np.sum(masses[:, None] * points, axis=0)
-
-
-def point_mass_system_com(masses, points):
-    """Center of mass of a finite set of point masses."""
-    return point_mass_system_h(masses, points) / np.sum(masses)
-
-
 def H2I(H):
+    """Convert second moment matrix to inertia matrix."""
+    assert H.shape == (3, 3)
     return np.trace(H) * np.eye(3) - H
 
 
 def I2H(I):
+    """Convert inertia matrix to second moment matrix."""
+    assert I.shape == (3, 3)
     return 0.5 * np.trace(I) * np.eye(3) - I
+
+
+def pim_sum_vec_matrices():
+    """Generate the matrices A_i such that J == sum(A_i * θ_i)"""
+    As = [np.zeros((4, 4)) for _ in range(10)]
+    As[0][3, 3] = 1  # mass
+
+    # hx
+    As[1][0, 3] = 1
+    As[1][3, 0] = 1
+
+    # hy
+    As[2][1, 3] = 1
+    As[2][3, 1] = 1
+
+    # hz
+    As[3][2, 3] = 1
+    As[3][3, 2] = 1
+
+    # Ixx
+    As[4][0, 0] = -0.5
+    As[4][1, 1] = 0.5
+    As[4][2, 2] = 0.5
+
+    # Ixy
+    As[5][0, 1] = -1
+    As[5][1, 0] = -1
+
+    # Ixz
+    As[6][0, 2] = -1
+    As[6][2, 0] = -1
+
+    # Iyy
+    As[7][0, 0] = 0.5
+    As[7][1, 1] = -0.5
+    As[7][2, 2] = 0.5
+
+    # Iyz
+    As[8][1, 2] = -1
+    As[8][2, 1] = -1
+
+    # Izz
+    As[9][0, 0] = 0.5
+    As[9][1, 1] = 0.5
+    As[9][2, 2] = -0.5
+
+    return As
 
 
 class InertialParameters:
@@ -154,10 +160,12 @@ class InertialParameters:
         masses = np.array(masses)
         points = np.array(points)
         assert masses.shape[0] == points.shape[0]
-        mass = sum(masses)
-        h = point_mass_system_h(masses, points)
-        H = point_mass_system_inertia(masses, points)[0]
-        return cls(mass=mass, h=h, H=H)
+
+        # homogeneous representation
+        P = np.hstack((points, np.ones((points.shape[0], 1))))
+
+        J = sum([m * np.outer(p, p) for m, p in zip(masses, P)])
+        return cls.from_pseudo_inertia_matrix(J)
 
     @classmethod
     def translate_from_com(cls, mass, h, Hc):
@@ -245,50 +253,3 @@ class InertialParameters:
         """Compute the body-frame wrench about the reference point."""
         M = self.M
         return M @ A + util.skew6(V) @ M @ V
-
-
-def pim_sum_vec_matrices():
-    """Generate the matrices A_i such that J == sum(A_i * θ_i)"""
-    As = [np.zeros((4, 4)) for _ in range(10)]
-    As[0][3, 3] = 1  # mass
-
-    # hx
-    As[1][0, 3] = 1
-    As[1][3, 0] = 1
-
-    # hy
-    As[2][1, 3] = 1
-    As[2][3, 1] = 1
-
-    # hz
-    As[3][2, 3] = 1
-    As[3][3, 2] = 1
-
-    # Ixx
-    As[4][0, 0] = -0.5
-    As[4][1, 1] = 0.5
-    As[4][2, 2] = 0.5
-
-    # Ixy
-    As[5][0, 1] = -1
-    As[5][1, 0] = -1
-
-    # Ixz
-    As[6][0, 2] = -1
-    As[6][2, 0] = -1
-
-    # Iyy
-    As[7][0, 0] = 0.5
-    As[7][1, 1] = -0.5
-    As[7][2, 2] = 0.5
-
-    # Iyz
-    As[8][1, 2] = -1
-    As[8][2, 1] = -1
-
-    # Izz
-    As[9][0, 0] = 0.5
-    As[9][1, 1] = 0.5
-    As[9][2, 2] = -0.5
-
-    return As

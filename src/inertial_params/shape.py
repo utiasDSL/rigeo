@@ -1,7 +1,6 @@
 """Polyhedral and ellipsoidal geometry."""
 import abc
 from collections.abc import Iterable
-from dataclasses import dataclass
 
 import numpy as np
 import cvxpy as cp
@@ -175,8 +174,8 @@ class Shape(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False, solver=None):
-        """Generate an ellipsoid that bounds the shape.
+    def mbe(self, rcond=None, sphere=False, solver=None):
+        """Generate the minimum-volume bounding ellipsoid for the shape.
 
         Parameters
         ----------
@@ -396,9 +395,9 @@ class ConvexPolyhedron(Shape):
     def aabb(self):
         return Box.from_points_to_bound(self.vertices)
 
-    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False, solver=None):
+    def mbe(self, rcond=None, sphere=False, solver=None):
         """Construct the minimum-volume bounding ellipsoid for this polyhedron."""
-        return minimum_bounding_ellipsoid(
+        return mbe_of_points(
             self.vertices, rcond=rcond, sphere=sphere, solver=solver
         )
 
@@ -914,7 +913,7 @@ class Ellipsoid(Shape):
         J, psd_contraints = _pim_from_param_var(param_var, eps)
         return psd_constraints + [cp.trace(self.Q @ J) >= 0]
 
-    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False):
+    def mbe(self, rcond=None, sphere=False):
         if not sphere:
             return self
         radius = np.max(self.half_extents)
@@ -1136,8 +1135,8 @@ class Cylinder(Shape):
         points = np.vstack((disk1.aabb().vertices, disk2.aabb().vertices))
         return Box.from_points_to_bound(points)
 
-    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False, solver=None):
-        return self.mib().minimum_bounding_ellipsoid(
+    def mbe(self, rcond=None, sphere=False, solver=None):
+        return self.mib().mbe(
             rcond=rcond, sphere=sphere, solver=solver
         )
 
@@ -1279,7 +1278,7 @@ class Capsule(Shape):
         points = np.vstack([cap.aabb().vertices for cap in self.caps])
         return Box.from_points_to_bound(points)
 
-    def minimum_bounding_ellipsoid(self, rcond=None, sphere=False, solver=None):
+    def mbe(self, rcond=None, sphere=False, solver=None):
         return mbe_of_ellipsoids(self.caps, sphere=sphere, solver=solver)
 
     def mbb(self):
@@ -1424,7 +1423,7 @@ def mbe_of_ellipsoids(ellipsoids, sphere=False, solver=None):
     return Ellipsoid.from_Ab(A=A, b=b)
 
 
-def minimum_bounding_ellipsoid(points, rcond=None, sphere=False, solver=None):
+def mbe_of_points(points, rcond=None, sphere=False, solver=None):
     """Compute the minimum bounding ellipsoid for a set of points.
 
     See Convex Optimization by Boyd & Vandenberghe, sec. 8.4.1.
@@ -1513,78 +1512,3 @@ def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False, solver=None)
     Einv = R @ ell.Einv @ R.T
     center = R @ ell.center
     return Ellipsoid.from_Einv(Einv=Einv, center=center)
-
-
-def positive_definite_distance(A, B):
-    """Geodesic distance between two positive definite matrices A and B.
-
-    This metric is coordinate-frame invariant. See (Lee and Park, 2018) for
-    more details.
-
-    Parameters
-    ----------
-    A : np.ndarray
-    B : np.ndarray
-
-    Returns
-    -------
-    : float
-        The non-negative geodesic between A and B.
-    """
-    C = np.linalg.solve(A, B)
-    eigs = np.linalg.eigvals(C)
-    # TODO: (Lee, Wensing, and Park, 2020) includes the factor of 0.5
-    return np.sqrt(0.5 * np.sum(np.log(eigs) ** 2))
-
-
-@dataclass
-class ClosestPointInfo:
-    """Information about a closest point query.
-
-    Attributes
-    ----------
-    p1 : np.ndarray
-        The closest point on the first shape.
-    p2 : np.ndarray
-        The closest point on the second shape.
-    dist : float, non-negative
-        The distance between the two shapes.
-    """
-
-    p1: np.ndarray
-    p2: np.ndarray
-    dist: float
-
-
-def closest_points(shape1, shape2, solver=None):
-    """Compute the closest points between two shapes.
-
-    When the two shapes are in contact or penetrating, the distance will be
-    zero and the points can be anything inside the intersection.
-
-    This function is *not* optimized for speed: a full convex program is
-    solved. Useful for prototyping but not for high-speed queries.
-
-    Parameters
-    ----------
-    shape1 : ConvexPolyhedron or Ellipsoid or Cylinder
-        The first shape to check.
-    shape2 : ConvexPolyhedron or Ellipsoid or Cylinder
-        The second shape to check.
-    solver : str or None
-        The solver for cvxpy to use.
-
-    Returns
-    -------
-    : ClosestPointInfo
-        Information about the closest points.
-    """
-    p1 = cp.Variable(3)
-    p2 = cp.Variable(3)
-
-    objective = cp.Minimize(cp.norm2(p2 - p1))
-    constraints = shape1.must_contain(p1) + shape2.must_contain(p2)
-    problem = cp.Problem(objective, constraints)
-    problem.solve(solver=solver)
-
-    return ClosestPointInfo(p1=p1.value, p2=p2.value, dist=objective.value)
