@@ -15,6 +15,8 @@ def random_psd_matrix(n):
     : np.ndarray, shape (n, n)
         A positive semidefinite matrix.
     """
+    # TODO: could look into doi.org/10.1109/TSP.2012.2186447 for
+    # uniform-sampling of trace-constrained PSD matrices
     A = 2 * np.random.random((n, n)) - 1
     return A.T @ A
 

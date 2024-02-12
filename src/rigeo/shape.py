@@ -397,15 +397,11 @@ class ConvexPolyhedron(Shape):
 
     def mbe(self, rcond=None, sphere=False, solver=None):
         """Construct the minimum-volume bounding ellipsoid for this polyhedron."""
-        return mbe_of_points(
-            self.vertices, rcond=rcond, sphere=sphere, solver=solver
-        )
+        return mbe_of_points(self.vertices, rcond=rcond, sphere=sphere, solver=solver)
 
-    def maximum_inscribed_ellipsoid(self, rcond=None, sphere=False, solver=None):
+    def mie(self, rcond=None, sphere=False, solver=None):
         """Construct the maximum-volume ellipsoid inscribed in this polyhedron."""
-        return maximum_inscribed_ellipsoid(
-            self.vertices, rcond=rcond, sphere=sphere, solver=solver
-        )
+        return mie(self.vertices, rcond=rcond, sphere=sphere, solver=solver)
 
     def intersect(self, other):
         """Intersect this polyhedron with another one.
@@ -649,6 +645,23 @@ class Box(ConvexPolyhedron):
         center = self.center.copy()
         half_extents = self.half_extents.copy()
         return Box(half_extents=half_extents, center=center, rotation=new_rotation)
+
+    def mie(self, rcond=None, sphere=False, solver=None):
+        if sphere:
+            radius = np.min(self.half_extents)
+            return Ellipsoid.sphere(radius=radius, center=self.center)
+        return Ellipsoid(
+            half_extents=self.half_extents, center=self.center, rotation=self.rotation
+        )
+
+    def mbe(self, rcond=None, sphere=False, solver=None):
+        half_extents = self.half_extents * np.sqrt(3)
+        if sphere:
+            radius = np.max(half_extents)
+            return Ellipsoid.sphere(radius=radius, center=self.center)
+        return Ellipsoid(
+            half_extents=half_extents, center=self.center, rotation=self.rotation
+        )
 
     # TODO numerical tolerance
     def can_realize(self, params, tol=1e-8):
@@ -1136,9 +1149,7 @@ class Cylinder(Shape):
         return Box.from_points_to_bound(points)
 
     def mbe(self, rcond=None, sphere=False, solver=None):
-        return self.mib().mbe(
-            rcond=rcond, sphere=sphere, solver=solver
-        )
+        return self.mib().mbe(rcond=rcond, sphere=sphere, solver=solver)
 
     def random_points(self, shape=1):
         P_z = self.length * (np.random.random(shape) - 0.5)
@@ -1344,28 +1355,6 @@ def convex_hull(points, rcond=None):
     return SpanForm(points).canonical().vertices
 
 
-def cube_bounding_ellipsoid(half_extent):
-    """Minimum-volume bounding ellipsoid (sphere) of a cube.
-
-    Parameters
-    ----------
-    half_extent : float, non-negative
-        The half extent of the cube (i.e., half of the side length).
-
-    Returns the bounding ellipsoid.
-    """
-    radius = np.linalg.norm(half_extent * np.ones(3))
-    return Ellipsoid.sphere(radius)
-
-
-def cube_inscribed_ellipsoid(half_extent):
-    """Maximum-volume inscribed ellipsoid (sphere) of a cube with half length h.
-
-    Returns the ellipsoid.
-    """
-    return Ellipsoid.sphere(half_extent)
-
-
 def _mbee_con_mat(Einv, d, Ai, bi, ti):
     """Constraint matrix for minimum bounding ellipsoid of ellipsoids problem."""
     dim = Einv.shape[0]
@@ -1459,7 +1448,7 @@ def mbe_of_points(points, rcond=None, sphere=False, solver=None):
     return Ellipsoid.from_Ab(A=A, b=b, rcond=rcond)
 
 
-def _maximum_inscribed_ellipsoid_inequality_form(A, b, sphere=False, solver=None):
+def _mie_inequality_form(A, b, sphere=False, solver=None):
     """Compute the maximum inscribed ellipsoid for an inequality-form
     polyhedron P = {x | Ax <= b}.
 
@@ -1487,7 +1476,7 @@ def _maximum_inscribed_ellipsoid_inequality_form(A, b, sphere=False, solver=None
     return Ellipsoid.from_Einv(Einv=np.linalg.inv(E), center=c.value)
 
 
-def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False, solver=None):
+def mie(vertices, rcond=None, sphere=False, solver=None):
     """Compute the maximum inscribed ellipsoid for a polyhedron represented by
     a set of vertices.
 
@@ -1504,9 +1493,7 @@ def maximum_inscribed_ellipsoid(vertices, rcond=None, sphere=False, solver=None)
     # solve the problem a possibly lower-dimensional space where the set of
     # vertices is full-rank
     face_form = SpanForm(P).to_face_form()
-    ell = _maximum_inscribed_ellipsoid_inequality_form(
-        face_form.A, face_form.b, sphere=sphere, solver=solver
-    )
+    ell = _mie_inequality_form(face_form.A, face_form.b, sphere=sphere, solver=solver)
 
     # unproject back into the original space
     Einv = R @ ell.Einv @ R.T

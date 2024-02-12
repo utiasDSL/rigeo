@@ -50,24 +50,15 @@ def test_ellipsoid_degenerate_contains():
     assert np.all(ell_inf.contains([[0.5, 0.5, 0], [0.5, 0.5, 10]]))
 
 
-def test_cube_bounding_ellipsoid():
-    h = 0.5
-    half_lengths = h * np.ones(3)
-    ell = rg.Box(half_lengths).mbe()
-    elld = rg.cube_bounding_ellipsoid(h)
-    assert ell.is_same(elld)
-
-
 def test_cube_bounding_ellipsoid_translated():
     h = 0.5
     offset = np.array([1, 1, 0])
 
-    half_lengths = h * np.ones(3)
-    points = rg.Box(half_lengths).vertices
-    points += offset
-
-    ell = rg.mbe_of_points(points)
-    elld = rg.cube_bounding_ellipsoid(h).transform(translation=offset)
+    # MBE for box and for general set of points are implemented differently, so
+    # it is worth testing them against each other
+    box = rg.Box.cube(h, center=offset)
+    ell = rg.mbe_of_points(box.vertices)
+    elld = box.mbe()
     assert ell.is_same(elld)
 
 
@@ -75,12 +66,11 @@ def test_cube_bounding_ellipsoid_rotated():
     h = 0.5
     C = rotx(np.pi / 2) @ roty(np.pi / 4)
 
-    half_lengths = h * np.ones(3)
-    points = rg.Box(half_lengths).vertices
-    points = (C @ points.T).T
+    box = rg.Box.cube(h)
+    points = (C @ box.vertices.T).T
 
     ell = rg.mbe_of_points(points)
-    elld = rg.cube_bounding_ellipsoid(h).transform(rotation=C)
+    elld = box.mbe().transform(rotation=C)
     assert ell.is_same(elld)
 
 
@@ -103,16 +93,15 @@ def test_bounding_ellipsoid_degenerate():
 
 def test_cube_inscribed_ellipsoid():
     h = 0.5
-    half_lengths = h * np.ones(3)
-    vertices = rg.Box(half_lengths).vertices
-    ell = rg.maximum_inscribed_ellipsoid(vertices)
-    elld = rg.cube_inscribed_ellipsoid(h)
+    box = rg.Box.cube(h)
+    ell = rg.mie(box.vertices)
+    elld = box.mie()
     assert ell.is_same(elld)
 
 
 def test_inscribed_sphere():
     box = rg.Box(half_extents=[1, 2, 3])
-    ell = box.maximum_inscribed_ellipsoid(sphere=True)
+    ell = box.mie(sphere=True)
     assert np.allclose(ell.Einv, np.eye(3))
 
 
@@ -122,7 +111,7 @@ def test_inscribed_ellipsoid_4d():
     dim = 4
     points = np.random.random((20, dim))
     vertices = rg.convex_hull(points)
-    ell = rg.maximum_inscribed_ellipsoid(vertices)
+    ell = rg.mie(vertices)
 
     # check that all the vertices are on the border or outside of the
     # ellipsoid
@@ -132,7 +121,7 @@ def test_inscribed_ellipsoid_4d():
 
 def test_inscribed_ellipsoid_degenerate():
     vertices = np.array([[1, 1, 0], [-1, 1, 0], [-1, -1, 0], [1, -1, 0]])
-    ell = rg.maximum_inscribed_ellipsoid(vertices)
+    ell = rg.mie(vertices)
     assert ell.rank == 2
 
     # check that all the vertices are on the border or outside of the
