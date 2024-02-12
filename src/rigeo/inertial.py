@@ -1,7 +1,7 @@
 import numpy as np
 
-import inertial_params.util as util
-from inertial_params.random import random_psd_matrix
+import rigeo.util as util
+from rigeo.random import random_psd_matrix
 
 
 def H2I(H):

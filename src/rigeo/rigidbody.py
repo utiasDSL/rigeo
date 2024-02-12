@@ -1,6 +1,7 @@
+import numpy as np
 import cvxpy as cp
 
-import inertial_params.util as util
+import rigeo.util as util
 
 
 # TODO the only real use of this seems to be as a container that permits

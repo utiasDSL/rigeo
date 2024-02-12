@@ -11,7 +11,7 @@ import cvxpy as cp
 from scipy.integrate import solve_ivp
 from scipy.spatial.transform import Rotation
 
-import inertial_params as ip
+import rigeo as rg
 
 import IPython
 
@@ -40,7 +40,7 @@ def SO3_jacobian(axis_angle, eps=1e-4):
     J = (
         (np.eye(3) - np.outer(axis, axis)) * s / angle
         + np.outer(axis, axis)
-        + (1 - c) * ip.skew3(axis) / angle
+        + (1 - c) * rg.skew3(axis) / angle
     )
     return J
 
@@ -72,7 +72,7 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
         aa_dot = np.linalg.solve(SO3_jacobian(aa), ω_world)
 
         # solve Newton-Euler for acceleration
-        ξ_dot = np.linalg.solve(M, wrench(t) - ip.skew6(ξ) @ M @ ξ)
+        ξ_dot = np.linalg.solve(M, wrench(t) - rg.skew6(ξ) @ M @ ξ)
         if planar:
             ξ_dot[2:5] = 0
 
@@ -82,10 +82,10 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
         #     IPython.embed()
         return x_dot
         # solve Newton-Euler for acceleration
-        # return np.linalg.solve(M, wrench(t) - ip.skew6(ξ) @ M @ ξ)
+        # return np.linalg.solve(M, wrench(t) - rg.skew6(ξ) @ M @ ξ)
 
     # integrate the trajectory
-    n, t_eval = ip.compute_evaluation_times(duration=duration, step=eval_step)
+    n, t_eval = rg.compute_evaluation_times(duration=duration, step=eval_step)
     res = solve_ivp(fun=f, t_span=[0, duration], y0=np.zeros(9), t_eval=t_eval)
     assert np.allclose(res.t, t_eval)
 
@@ -97,7 +97,7 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
     velocities = xs[:, 3:]
     accelerations = np.array([f(t, x)[3:] for t, x in zip(t_eval, xs)])
     # wrenches = np.array([wrench(t) for t in t_eval])
-    wrenches = np.array([M @ A + ip.skew6(V) @ M @ V for V, A in zip(velocities, accelerations)])
+    wrenches = np.array([M @ A + rg.skew6(V) @ M @ V for V, A in zip(velocities, accelerations)])
 
     # apply noise to velocity
     vel_noise_raw = np.random.random(size=velocities.shape) - 0.5  # mean = 0, width = 1
@@ -154,8 +154,8 @@ def main():
     )
     args = parser.parse_args()
 
-    # bounding_box = ip.Box.cube(BOUNDING_BOX_HALF_EXTENT, center=OFFSET)
-    bounding_box = ip.Box(BOUNDING_BOX_HALF_EXTENTS, center=OFFSET)
+    # bounding_box = rg.Box.cube(BOUNDING_BOX_HALF_EXTENT, center=OFFSET)
+    bounding_box = rg.Box(BOUNDING_BOX_HALF_EXTENTS, center=OFFSET)
 
     obj_data_full = []
     obj_data_planar = []
@@ -173,8 +173,8 @@ def main():
             # random point mass system contained in the bounding box
             points = bounding_box.random_points(num_primitives)
             points = np.atleast_2d(points)
-            vertices = ip.convex_hull(points)
-            params = ip.InertialParameters.from_point_masses(masses=masses, points=points)
+            vertices = rg.convex_hull(points)
+            params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
         elif args.type == "boxes":
             # generate random boxes inside a larger one by defining each box
             # using two vertices
@@ -184,18 +184,18 @@ def main():
             all_params = []
             all_vertices = []
             for j in range(num_primitives):
-                box = ip.Box.from_two_vertices(
+                box = rg.Box.from_two_vertices(
                     points[j, 0, :], points[j, 1, :]
                 )
                 all_vertices.append(box.vertices)
-                Ic = ip.cuboid_inertia_matrix(masses[j], box.half_extents)
-                Hc = ip.I2H(Ic)
-                params = ip.InertialParameters.translate_from_com(
+                Ic = rg.cuboid_inertia_matrix(masses[j], box.half_extents)
+                Hc = rg.I2H(Ic)
+                params = rg.InertialParameters.translate_from_com(
                     mass=masses[j], h=masses[j] * box.center, Hc=Hc
                 )
                 all_params.append(params)
             params = sum(all_params)
-            vertices = ip.convex_hull(np.vstack(all_vertices))
+            vertices = rg.convex_hull(np.vstack(all_vertices))
 
         assert np.isclose(params.mass, MASS)
         assert bounding_box.contains(params.com)

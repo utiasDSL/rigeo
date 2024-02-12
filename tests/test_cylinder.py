@@ -2,11 +2,11 @@ import numpy as np
 import cvxpy as cp
 from spatialmath.base import rotx, roty, rotz
 
-import inertial_params as ip
+import rigeo as rg
 
 
 def test_contains():
-    cylinder = ip.Cylinder(length=1, radius=0.5)
+    cylinder = rg.Cylinder(length=1, radius=0.5)
 
     # a single point
     assert cylinder.contains([0, 0, 0])
@@ -26,7 +26,7 @@ def test_contains():
 
 
 def test_must_contain():
-    cylinder = ip.Cylinder(length=1, radius=0.5)
+    cylinder = rg.Cylinder(length=1, radius=0.5)
     point = cp.Variable(3)
 
     objective = cp.Maximize(point[0])
@@ -38,7 +38,7 @@ def test_must_contain():
 
 def test_aabb():
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
+    cyl = rg.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
     box = cyl.aabb()
 
     # check that the point farther along each axis (in both directions) in the
@@ -56,7 +56,7 @@ def test_aabb():
 def test_random_points():
     np.random.seed(0)
 
-    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1])
+    cyl = rg.Cylinder(length=2, radius=0.5, center=[1, 0, 1])
 
     # one point
     point = cyl.random_points()
@@ -91,7 +91,7 @@ def test_random_points():
 
 def test_maximum_inscribed_box():
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
+    cyl = rg.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
     mib = cyl.mib()
     assert np.allclose(mib.center, cyl.center)
     assert cyl.contains_polyhedron(mib)
@@ -105,7 +105,7 @@ def test_mbe():
     np.random.seed(0)
 
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
+    cyl = rg.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
     mib = cyl.mib()
     ell = cyl.mbe()
     assert np.allclose(ell.center, cyl.center)
@@ -122,7 +122,7 @@ def test_minimum_bounding_box():
     np.random.seed(0)
 
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    cyl = ip.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
+    cyl = rg.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
     mib = cyl.mib()
     mbb = cyl.mbb()
     assert np.allclose(mbb.center, cyl.center)

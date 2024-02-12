@@ -11,7 +11,7 @@ import pinocchio
 import cvxpy as cp
 from scipy.linalg import block_diag
 
-import inertial_params as ip
+import rigeo as rg
 
 import IPython
 
@@ -60,7 +60,7 @@ class DiscretizedIPIDProblem:
             0.5 / self.n * cp.quad_form(self.A @ self.θ - self.b, self.W) + regularizer
         )
         Ps = np.array([np.outer(p, p) for p in points])
-        constraints = ip.J_vec_constraint(self.Jopt, self.θ) + [
+        constraints = rg.J_vec_constraint(self.Jopt, self.θ) + [
             masses >= 0,
             cp.sum(masses) == self.θ[0],
             masses.T @ points == self.θ[1:4],
@@ -70,7 +70,7 @@ class DiscretizedIPIDProblem:
         problem.solve(solver=cp.MOSEK)
         # print(f"disc solve time = {problem.solver_stats.solve_time}")
         # print(f"disc value = {problem.value}")
-        return ip.InertialParameters.from_vector(self.θ.value)
+        return rg.InertialParameters.from_vector(self.θ.value)
 
 
 class IPIDProblem:
@@ -114,7 +114,7 @@ class IPIDProblem:
             + self.reg_coeff * regularizer
         )
 
-        constraints = ip.J_vec_constraint(self.Jopt, self.θ)
+        constraints = rg.J_vec_constraint(self.Jopt, self.θ)
         if extra_constraints is not None:
             constraints.extend(extra_constraints)
 
@@ -124,8 +124,8 @@ class IPIDProblem:
         if name is not None:
             print(f"{name} solve time = {problem.solver_stats.solve_time}")
         #     print(f"{name} value = {problem.value}")
-        return ip.InertialParameters.from_vector(self.θ.value)
-        # return ip.InertialParameters.from_pseudo_inertia_matrix(self.Jopt.value)
+        return rg.InertialParameters.from_vector(self.θ.value)
+        # return rg.InertialParameters.from_pseudo_inertia_matrix(self.Jopt.value)
 
     def solve_nominal(self):
         return self._solve()
@@ -228,24 +228,24 @@ def main():
         vertices = data["vertices"][i]
 
         if USE_BOUNDING_BOX:
-            # box = ip.Box.from_points_to_bound(vertices)
+            # box = rg.Box.from_points_to_bound(vertices)
             box = data["bounding_box"]
             vertices = box.vertices
             grid = box.grid(n=DISC_GRID_SIZE)
 
             reg_mass = 1.0
             reg_com = box.center
-            reg_inertia = ip.cuboid_inertia_matrix(reg_mass, box.half_extents)
-            reg_params = ip.InertialParameters.from_mcI(
+            reg_inertia = rg.cuboid_inertia_matrix(reg_mass, box.half_extents)
+            reg_params = rg.InertialParameters.from_mcI(
                 mass=reg_mass, com=reg_com, I=reg_inertia
             )
 
             # regularization for discrete approach
             reg_masses = reg_mass * np.ones(grid.shape[0]) / grid.shape[0]
         else:
-            grid = ip.polyhedron_grid(vertices, n=DISC_GRID_SIZE)
+            grid = rg.polyhedron_grid(vertices, n=DISC_GRID_SIZE)
 
-        ellipsoid = ip.minimum_bounding_ellipsoid(vertices)
+        ellipsoid = rg.minimum_bounding_ellipsoid(vertices)
 
         # Ys = np.array(data["obj_data"][i]["Ys"])
         # Ys_noisy = np.array(data["obj_data"][i]["Ys_noisy"])
@@ -273,19 +273,19 @@ def main():
         ws_train = ws_noisy[:n_train]
 
         Ys_train = np.array(
-            [ip.body_regressor(V, A) for V, A in zip(Vs_train, As_train)]
+            [rg.body_regressor(V, A) for V, A in zip(Vs_train, As_train)]
         )
 
         # test/validation data
         Vs_test = Vs[n_train:]
         As_test = As[n_train:]
-        Ys_test = np.array([ip.body_regressor(V, A) for V, A in zip(Vs_test, As_test)])
+        Ys_test = np.array([rg.body_regressor(V, A) for V, A in zip(Vs_test, As_test)])
         # ws_test = ws_noisy[n_train:]
         ws_test = ws[n_train:]
 
         # solve the problem with no noise (just to make sure things are working)
         Ys_train_noiseless = np.array(
-            [ip.body_regressor(V, A) for V, A in zip(Vs, As)]
+            [rg.body_regressor(V, A) for V, A in zip(Vs, As)]
         )[:n_train]
         ws_train_noiseless = ws[:n_train]
         prob_noiseless = IPIDProblem(
@@ -318,35 +318,35 @@ def main():
         θ_errors.discrete.append(np.linalg.norm(params.θ - params_grid.θ))
 
         riemannian_errors.no_noise.append(
-            ip.positive_definite_distance(params.J, params_noiseless.J)
+            rg.positive_definite_distance(params.J, params_noiseless.J)
         )
         riemannian_errors.nominal.append(
-            ip.positive_definite_distance(params.J, params_nom.J)
+            rg.positive_definite_distance(params.J, params_nom.J)
         )
         riemannian_errors.ellipsoid.append(
-            ip.positive_definite_distance(params.J, params_ell.J)
+            rg.positive_definite_distance(params.J, params_ell.J)
         )
         riemannian_errors.polyhedron.append(
-            ip.positive_definite_distance(params.J, params_poly.J)
+            rg.positive_definite_distance(params.J, params_poly.J)
         )
         riemannian_errors.discrete.append(
-            ip.positive_definite_distance(params.J, params_grid.J)
+            rg.positive_definite_distance(params.J, params_grid.J)
         )
 
         validation_errors.no_noise.append(
-            ip.validation_rmse(Ys_test, ws_test, params_noiseless.θ)
+            rg.validation_rmse(Ys_test, ws_test, params_noiseless.θ)
         )
         validation_errors.nominal.append(
-            ip.validation_rmse(Ys_test, ws_test, params_nom.θ)
+            rg.validation_rmse(Ys_test, ws_test, params_nom.θ)
         )
         validation_errors.ellipsoid.append(
-            ip.validation_rmse(Ys_test, ws_test, params_ell.θ)
+            rg.validation_rmse(Ys_test, ws_test, params_ell.θ)
         )
         validation_errors.polyhedron.append(
-            ip.validation_rmse(Ys_test, ws_test, params_poly.θ)
+            rg.validation_rmse(Ys_test, ws_test, params_poly.θ)
         )
         validation_errors.discrete.append(
-            ip.validation_rmse(Ys_test, ws_test, params_grid.θ)
+            rg.validation_rmse(Ys_test, ws_test, params_grid.θ)
         )
 
         print(f"\nProblem {i + 1}")

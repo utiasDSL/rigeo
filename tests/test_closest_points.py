@@ -1,13 +1,13 @@
 import numpy as np
 
-import inertial_params as ip
+import rigeo as rg
 
 
 def test_closest_points():
     # box-box
-    box = ip.Box(half_extents=[0.5, 0.5, 0.5])
-    box2 = ip.Box(half_extents=[0.5, 0.5, 0.5], center=[2, 2, 2])
-    info = ip.closest_points(box, box2)
+    box = rg.Box(half_extents=[0.5, 0.5, 0.5])
+    box2 = rg.Box(half_extents=[0.5, 0.5, 0.5], center=[2, 2, 2])
+    info = rg.closest_points(box, box2)
 
     p1 = 0.5 * np.ones(3)
     p2 = 1.5 * np.ones(3)
@@ -16,8 +16,8 @@ def test_closest_points():
     assert np.allclose(info.p2, p2)
 
     # box-sphere
-    sphere = ip.Ellipsoid.sphere(radius=0.5, center=[2, 0, 0])
-    info = ip.closest_points(box, sphere)
+    sphere = rg.Ellipsoid.sphere(radius=0.5, center=[2, 0, 0])
+    info = rg.closest_points(box, sphere)
 
     assert np.isclose(info.dist, 1.0)
     assert np.allclose(info.p1, [0.5, 0, 0])
@@ -25,8 +25,8 @@ def test_closest_points():
 
     # box-cylinder
     # shapes are overlapping
-    cylinder = ip.Cylinder(length=1.0, radius=0.5, center=[0.9, 0, 0])
-    info = ip.closest_points(box, cylinder)
+    cylinder = rg.Cylinder(length=1.0, radius=0.5, center=[0.9, 0, 0])
+    info = rg.closest_points(box, cylinder)
 
     assert np.isclose(info.dist, 0.0)
     assert np.allclose(info.p1, info.p2)

@@ -1,15 +1,16 @@
 import numpy as np
 from spatialmath.base import rotz
-import inertial_params as ip
+
+import rigeo as rg
 
 
 def test_addition():
     mass = 1.0
     h = np.zeros(3)
-    I = ip.Box(half_extents=[0.5, 0.5, 0.5]).uniform_density_params(mass).I
-    H = ip.I2H(I)
+    I = rg.Box(half_extents=[0.5, 0.5, 0.5]).uniform_density_params(mass).I
+    H = rg.I2H(I)
 
-    p1 = ip.InertialParameters(mass=mass, h=h, H=H)
+    p1 = rg.InertialParameters(mass=mass, h=h, H=H)
     p_sum = p1 + p1
 
     assert np.allclose(p_sum.J, 2 * p1.J)
@@ -19,7 +20,7 @@ def test_addition():
     # more complex example with non-zero h
     h = np.array([1, 2, 3])
     H = H + np.outer(h, h) / mass
-    p2 = ip.InertialParameters(mass=mass, h=h, H=H)
+    p2 = rg.InertialParameters(mass=mass, h=h, H=H)
     p_sum = p1 + p2
 
     assert np.allclose(p_sum.J, p1.J + p2.J)
@@ -30,13 +31,13 @@ def test_addition():
 def test_representations():
     mass = 1.0
     h = np.array([1, 2, 3])
-    Ic = ip.Box(half_extents=[0.5, 0.5, 0.5]).uniform_density_params(mass).I
-    H = ip.I2H(Ic) + np.outer(h, h) / mass
+    Ic = rg.Box(half_extents=[0.5, 0.5, 0.5]).uniform_density_params(mass).I
+    H = rg.I2H(Ic) + np.outer(h, h) / mass
 
-    p1 = ip.InertialParameters(mass=mass, h=h, H=H)
-    p2 = ip.InertialParameters.from_vector(p1.θ)
-    p3 = ip.InertialParameters.from_pseudo_inertia_matrix(p1.J)
-    p4 = ip.InertialParameters.from_mcI(mass=p1.mass, com=p1.com, I=p1.I)
+    p1 = rg.InertialParameters(mass=mass, h=h, H=H)
+    p2 = rg.InertialParameters.from_vector(p1.θ)
+    p3 = rg.InertialParameters.from_pseudo_inertia_matrix(p1.J)
+    p4 = rg.InertialParameters.from_mcI(mass=p1.mass, com=p1.com, I=p1.I)
 
     assert p2.is_same(p1)
     assert p3.is_same(p1)
@@ -45,7 +46,7 @@ def test_representations():
 
 def test_transform():
     mass = 1.0
-    box = ip.Box(half_extents=np.ones(3))
+    box = rg.Box(half_extents=np.ones(3))
     params = box.vertex_point_mass_params(mass)
 
     # rotation only

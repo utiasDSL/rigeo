@@ -5,7 +5,7 @@ import hppfcl
 import pinocchio
 from spatialmath.base import r2q
 
-import inertial_params as ip
+from rigeo.shape import Box
 
 
 # TODO want something more elegant than this
@@ -60,7 +60,7 @@ class RobotModel:
             half_extents = geom.geometry.halfSide
             center = geom.placement.translation
             rotation = geom.placement.rotation
-            box = ip.Box(half_extents=half_extents, center=center, rotation=rotation)
+            box = Box(half_extents=half_extents, center=center, rotation=rotation)
 
             # remove trailing number from the geometry names
             name = "_".join(geom.name.split("_")[:-1])

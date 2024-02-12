@@ -1,5 +1,6 @@
 import numpy as np
-import inertial_params as ip
+
+import rigeo as rg
 
 
 def allclose_unordered(A, B):
@@ -46,22 +47,22 @@ def test_allclose_unordered():
 
 def test_conv_hull_cube():
     half_extents = 0.5 * np.ones(3)
-    points = ip.Box(half_extents).vertices
-    vertices = ip.convex_hull(points)
+    points = rg.Box(half_extents).vertices
+    vertices = rg.convex_hull(points)
     assert allclose_unordered(vertices, points)
 
     # generate some random points inside the hull
     np.random.seed(0)
-    extras = ip.Box(half_extents).random_points(10)
+    extras = rg.Box(half_extents).random_points(10)
     points_extra = np.vstack((points, extras))
-    vertices = ip.convex_hull(points_extra)
+    vertices = rg.convex_hull(points_extra)
     assert allclose_unordered(vertices, points)
 
 
 def test_conv_hull_degenerate():
     # just a square, with no z variation
     points = np.array([[1, 1, 0], [-1, 1, 0], [-1, -1, 0], [1, -1, 0]])
-    vertices = ip.convex_hull(points)
+    vertices = rg.convex_hull(points)
     assert allclose_unordered(vertices, points)
 
     # generate some random points inside the hull
@@ -69,5 +70,5 @@ def test_conv_hull_degenerate():
     extras = 2 * np.random.random((10, 2)) - 1
     extras = np.hstack((extras, np.zeros((10, 1))))
     points_extra = np.vstack((points, extras))
-    vertices = ip.convex_hull(points_extra)
+    vertices = rg.convex_hull(points_extra)
     assert allclose_unordered(vertices, points)

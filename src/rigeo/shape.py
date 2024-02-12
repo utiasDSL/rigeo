@@ -6,10 +6,10 @@ import numpy as np
 import cvxpy as cp
 from scipy.linalg import orth, sqrtm
 
-from inertial_params.polydd import SpanForm, FaceForm
-from inertial_params.util import schur
-from inertial_params.random import random_weight_vectors, random_points_in_ball
-from inertial_params.inertial import pim_sum_vec_matrices, InertialParameters
+from rigeo.polydd import SpanForm, FaceForm
+from rigeo.util import schur
+from rigeo.random import random_weight_vectors, random_points_in_ball
+from rigeo.inertial import pim_sum_vec_matrices, InertialParameters
 
 
 def _inv_with_zeros(a, tol=1e-8):

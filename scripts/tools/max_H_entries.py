@@ -2,7 +2,7 @@
 import numpy as np
 import cvxpy as cp
 
-import inertial_params as ip
+import rigeo as rg
 
 import IPython
 
@@ -10,8 +10,8 @@ import IPython
 def main():
     np.set_printoptions(precision=6, suppress=True)
 
-    box = ip.Box(half_extents=[0.05, 0.05, 0.2], center=[0, 0, 0.2])
-    com_bound = ip.Box(half_extents=[0.04, 0.04, 0.1], center=[0, 0, 0.2])
+    box = rg.Box(half_extents=[0.05, 0.05, 0.2], center=[0, 0, 0.2])
+    com_bound = rg.Box(half_extents=[0.04, 0.04, 0.1], center=[0, 0, 0.2])
     mass_min = 0.9
     mass_max = 1.1
 

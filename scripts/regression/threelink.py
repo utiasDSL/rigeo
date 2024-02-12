@@ -1,4 +1,3 @@
-"""Generate simulated data for random polyhedral rigid bodies."""
 import argparse
 import time
 
@@ -9,8 +8,8 @@ import pybullet as pyb
 import pybullet_data
 import pyb_utils
 
-import mobile_manipulation_central as mm
-import inertial_params as ip
+from xacrodoc import XacroDoc
+import rigeo as rg
 
 import IPython
 
@@ -74,7 +73,7 @@ class IPIDProblem:
 
         constraints = []
         for i in range(self.nb):
-            constraints.extend(ip.J_vec_constraint(self.Js[i], self.θs[i]))
+            constraints.extend(rg.J_vec_constraint(self.Js[i], self.θs[i]))
         if extra_constraints is not None:
             constraints.extend(extra_constraints)
 
@@ -84,8 +83,8 @@ class IPIDProblem:
         if name is not None:
             print(f"{name} solve time = {problem.solver_stats.solve_time}")
             print(f"{name} value = {problem.value}")
-        return [ip.InertialParameters.from_vector(θ.value) for θ in self.θs]
-        # return ip.InertialParameters.from_pseudo_inertia_matrix(self.Jopt.value)
+        return [rg.InertialParameters.from_vector(θ.value) for θ in self.θs]
+        # return rg.InertialParameters.from_pseudo_inertia_matrix(self.Jopt.value)
 
     def solve_nominal(self):
         return self._solve(name="nominal")
@@ -126,35 +125,32 @@ def main():
     np.set_printoptions(suppress=True, precision=6)
     np.random.seed(0)
 
-    # parser = argparse.ArgumentParser()
-    # parser.add_argument("outfile", help="File to save the data to.")
-    # args = parser.parse_args()
-
     # compile the URDF
-    xacro_doc = mm.XacroDoc.from_package_file(
-        package_name="inertial_params",
+    xacro_doc = XacroDoc.from_package_file(
+        package_name="rigeo",
         relative_path="urdf/threelink.urdf.xacro",
     )
 
     # load Pinocchio model
-    model = ip.RobotModel.from_urdf_string(xacro_doc.to_urdf_string(), gravity=GRAVITY)
-    # model = ip.RobotModel.from_urdf_string(xacro_doc.to_urdf_string(), gravity=np.zeros(3))
+    model = rg.RobotModel.from_urdf_string(xacro_doc.to_urdf_string(), gravity=GRAVITY)
+    # model = rg.RobotModel.from_urdf_string(xacro_doc.to_urdf_string(), gravity=np.zeros(3))
 
     boxes = [model.boxes[name] for name in ["link1", "link2", "link3"]]
-    ellipsoids = [ip.minimum_bounding_ellipsoid(box.vertices) for box in boxes]
+    ellipsoids = [rg.minimum_bounding_ellipsoid(box.vertices) for box in boxes]
 
     # actual inertial parameter values
+    # TODO transfer this into the Robot model
     params = []
     for i in range(1, 4):
         iner = model.model.inertias[i]
         mass = iner.mass
         h = iner.lever / mass
-        Hc = ip.I2H(iner.inertia)
-        params.append(ip.InertialParameters.translate_from_com(mass, h, Hc))
+        Hc = rg.I2H(iner.inertia)
+        params.append(rg.InertialParameters.translate_from_com(mass, h, Hc))
     θ = np.concatenate([p.θ for p in params])
     # θ_pin = np.concatenate([model.model.inertias[i].toDynamicParameters() for i in range(1, 4)])
 
-    n, ts_eval = ip.compute_evaluation_times(
+    n, ts_eval = rg.compute_evaluation_times(
         duration=2 * np.pi, step=RECORDING_TIMESTEP
     )
 
@@ -221,23 +217,23 @@ def main():
 
     # results
     riemannian_err_nom = np.sum(
-        [ip.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_nom)]
+        [rg.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_nom)]
     )
     riemannian_err_ell = np.sum(
-        [ip.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_ell)]
+        [rg.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_ell)]
     )
     riemannian_err_poly = np.sum(
-        [ip.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_poly)]
+        [rg.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_poly)]
     )
 
     θ_nom = np.concatenate([p.θ for p in params_nom])
-    validation_err_nom = ip.validation_rmse(Ys_test, τs_test, θ_nom)
+    validation_err_nom = rg.validation_rmse(Ys_test, τs_test, θ_nom)
 
     θ_ell = np.concatenate([p.θ for p in params_ell])
-    validation_err_ell = ip.validation_rmse(Ys_test, τs_test, θ_ell)
+    validation_err_ell = rg.validation_rmse(Ys_test, τs_test, θ_ell)
 
     θ_poly = np.concatenate([p.θ for p in params_poly])
-    validation_err_poly = ip.validation_rmse(Ys_test, τs_test, θ_poly)
+    validation_err_poly = rg.validation_rmse(Ys_test, τs_test, θ_poly)
 
     print("\nRiemannian error")
     print(f"nominal    = {riemannian_err_nom}")

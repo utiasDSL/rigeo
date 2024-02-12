@@ -1,11 +1,11 @@
 import numpy as np
 import cvxpy as cp
 
-import inertial_params as ip
+import rigeo as rg
 
 
 def test_must_contain():
-    cap = ip.Cylinder(length=2, radius=1).capsule()
+    cap = rg.Cylinder(length=2, radius=1).capsule()
 
     point = cp.Variable(3)
 
@@ -37,7 +37,7 @@ def test_must_contain():
 def test_random_points():
     np.random.seed(0)
 
-    cap = ip.Cylinder(length=2, radius=1).capsule()
+    cap = rg.Cylinder(length=2, radius=1).capsule()
 
     # one point
     point = cap.random_points()
