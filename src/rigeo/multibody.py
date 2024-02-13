@@ -3,31 +3,60 @@ from pathlib import Path
 import numpy as np
 import hppfcl
 import pinocchio
-from spatialmath.base import r2q
 
-from rigeo.shape import Box
+from rigeo.shape import Box, Ellipsoid, Cylinder
+from rigeo.inertial import I2H, InertialParameters
+from rigeo.rigidbody import RigidBody
 
 
 # TODO want something more elegant than this
-def _ref_frame_from_string(s):
-    """Translate a string to pinocchio's ReferenceFrame enum value."""
-    s = s.lower()
-    if s == "local":
-        return pinocchio.ReferenceFrame.LOCAL
-    if s == "local_world_aligned":
-        return pinocchio.ReferenceFrame.LOCAL_WORLD_ALIGNED
-    if s == "world":
-        return pinocchio.ReferenceFrame.WORLD
-    raise ValueError(f"{s} is not a valid Pinocchio reference frame.")
+# def _ref_frame_from_string(s):
+#     """Translate a string to pinocchio's ReferenceFrame enum value."""
+#     s = s.lower()
+#     if s == "local":
+#         return pinocchio.ReferenceFrame.LOCAL
+#     if s == "local_world_aligned":
+#         return pinocchio.ReferenceFrame.LOCAL_WORLD_ALIGNED
+#     if s == "world":
+#         return pinocchio.ReferenceFrame.WORLD
+#     raise ValueError(f"{s} is not a valid Pinocchio reference frame.")
 
 
-class RobotModel:
-    """Class representing the model of a robot."""
+RF = pinocchio.ReferenceFrame
+
+
+def _hppfcl_to_shape(geom):
+    """Convert an HPP-FCL shape to the equivalent rigeo shape."""
+    type_ = geom.getNodeType()
+
+    if type_ == hppfcl.hppfcl.NODE_TYPE.GEOM_CONVEX:
+        raise NotImplementedError("Mesh is not yet supported.")
+        pass
+    elif type_ == hppfcl.hppfcl.NODE_TYPE.GEOM_BOX:
+        return Box(half_extents=geom.halfSide)
+    elif type_ == hppfcl.hppfcl.NODE_TYPE.GEOM_SPHERE:
+        return Ellipsoid.sphere(radius=geom.radius)
+    elif type_ == hppfcl.hppfcl.NODE_TYPE.GEOM_CYLINDER:
+        return Cylinder(length=2 * geom.halfLength, radius=geom.radius)
+    else:
+        raise ValueError("Unrecognized shape.")
+
+
+def _pin_to_shape(geom_obj):
+    shape = _hppfcl_to_shape(geom_obj.geometry)
+    return shape.transform(
+        rotation=geom_obj.placement.rotation, translation=geom_obj.placement.translation
+    )
+
+
+class MultiBody:
+    """A connected set of rigid bodies."""
 
     def __init__(self, model, geom_model, tool_link_name=None, gravity=None):
         self.model = model
         self.data = self.model.createData()
 
+        self.nj = model.njoints  # number of joints
         self.nq = model.nq  # number of joint positions
         self.nv = model.nv  # number of joint velocities
 
@@ -48,25 +77,24 @@ class RobotModel:
         self.geom_model = geom_model
         self.geom_data = geom_model.createData()
 
-        # build the boxes composing the robot
-        # TODO basically we'd like to seamlessly parse this into rigeo's format
-        # for all supported shapes
-        self.boxes = {}
+        # bodies is a mapping of joint indices to the rigid bodies composing the
+        # multibody
+        self.bodies = {}
         for i in range(geom_model.ngeoms):
             geom = geom_model.geometryObjects[i]
-            if geom.geometry.getNodeType() != hppfcl.hppfcl.NODE_TYPE.GEOM_BOX:
-                continue
+            joint_idx = geom.parentJoint
+            inertia = model.inertias[joint_idx]
 
-            half_extents = geom.geometry.halfSide
-            center = geom.placement.translation
-            rotation = geom.placement.rotation
-            box = Box(half_extents=half_extents, center=center, rotation=rotation)
+            shape = _pin_to_shape(geom)
 
-            # remove trailing number from the geometry names
-            name = "_".join(geom.name.split("_")[:-1])
-            if name in self.boxes:
-                raise ValueError("Box named {name} already exists!")
-            self.boxes[name] = box
+            if joint_idx in self.bodies:
+                self.bodies[joint_idx].shapes.append(shape)
+            else:
+                mass = inertia.mass
+                h = mass * inertia.lever
+                Hc = I2H(inertia.inertia)
+                params = InertialParameters.translate_from_com(mass, h, Hc)
+                self.bodies[joint_idx] = RigidBody(shapes=[shape], params=params)
 
     @classmethod
     def from_urdf_string(
@@ -106,6 +134,12 @@ class RobotModel:
             urdf_str, root_joint, tool_link_name=tool_link_name, gravity=gravity
         )
 
+    def get_joint_index(self, name):
+        # TODO
+        if not self.model.existJointName(name):
+            raise ValueError(f"Model has no joint named {name}.")
+        return self.model.getJointId(name)
+
     def get_frame_index(self, name):
         """Get the index of a frame by name.
 
@@ -128,12 +162,36 @@ class RobotModel:
             raise ValueError(f"Model has no frame named {name}.")
         return self.model.getFrameId(name)
 
+    def _resolve_joint_index(self, joint):
+        """Convert joint index or name to index."""
+        if isinstance(joint, str):
+            return self.get_joint_index(joint)
+        return joint
+
     def _resolve_frame_index(self, frame):
+        """Convert frame index or name to index."""
         if frame is None:
             return self.tool_idx
         if isinstance(frame, str):
             return self.get_frame_index(frame)
         return frame
+
+    def get_bodies(self, joints):
+        """Get the rigid bodies corresponding to the given joints.
+
+        Parameters
+        ----------
+        joints : list[str] or list[int]
+            Joints to get the bodies for. Can either be specified by name or
+            index.
+
+        Returns
+        -------
+        : list[RigidBody]
+            A list of rigid bodies corresponding to the joints.
+        """
+        indices = [self._resolve_joint_index(joint) for joint in joints]
+        return [self.bodies[idx] for idx in indices]
 
     def compute_forward_kinematics(self, q, v=None, a=None):
         """Compute forward kinematics.
@@ -188,6 +246,25 @@ class RobotModel:
         return pinocchio.rnea(self.model, self.data, q, v, a)
 
     def compute_joint_torque_regressor(self, q, v, a):
+        """Compute the joint torque regressor matrix for the multibody.
+
+        The joint torque regressor matrix maps the stacked vector of link
+        inertial parameters to the joint torques.
+
+        Parameters
+        ----------
+        q : np.ndarray, shape (self.nq,)
+            The joint positions.
+        v : np.ndarray, shape (self.nv,)
+            The joint velocities.
+        a : np.ndarray, shape (self.nv,)
+            The joint accelerations.
+
+        Returns
+        -------
+        : np.ndarray, shape (self.nv, 10 * self.nlinks)
+            The joint torque regressor matrix.
+        """
         Y_pin = pinocchio.computeJointTorqueRegressor(self.model, self.data, q, v, a)
         # pinocchio stores inertial parameter vector as
         #   θ = [m, hx, hy, hz, Ixx, Ixy, Iyy, Ixz, Iyz, Izz],
@@ -223,51 +300,46 @@ class RobotModel:
         pose = self.data.oMf[idx]
         return pose.rotation, pose.translation
 
-    def get_frame_velocity(self, link_idx=None, frame="local_world_aligned"):
+    def get_frame_velocity(self, frame=None, expressed_in=RF.LOCAL):
         """Get velocity of link at index link_idx"""
-        if link_idx is None:
-            link_idx = self.tool_idx
+        idx = self._resolve_frame_index(frame)
         V = pinocchio.getFrameVelocity(
             self.model,
             self.data,
-            link_idx,
-            _ref_frame_from_string(frame),
+            idx,
+            expressed_in,
         )
         return V.linear, V.angular
 
-    def get_frame_classical_acceleration(self, link_idx=None, frame="local_world_aligned"):
+    def get_frame_classical_acceleration(self, frame=None, expressed_in=RF.LOCAL):
         """Get the classical acceleration of a link."""
-        if link_idx is None:
-            link_idx = self.tool_idx
+        idx = self._resolve_frame_index(frame)
         A = pinocchio.getFrameClassicalAcceleration(
             self.model,
             self.data,
-            link_idx,
-            _ref_frame_from_string(frame),
+            idx,
+            expressed_in,
         )
         return A.linear, A.angular
 
-    def get_frame_spatial_acceleration(self, link_idx=None, frame="local_world_aligned"):
+    def get_frame_spatial_acceleration(self, frame=None, expressed_in=RF.LOCAL):
         """Get the spatial acceleration of a link."""
-        if link_idx is None:
-            link_idx = self.tool_idx
+        idx = self._resolve_frame_index(frame)
         A = pinocchio.getFrameAcceleration(
             self.model,
             self.data,
-            link_idx,
-            _ref_frame_from_string(frame),
+            idx,
+            expressed_in,
         )
         return A.linear, A.angular
 
-    # TODO we have a conflict
-    def compute_frame_jacobian(self, q, frame=None, expressed_in="local_world_aligned"):
+    def compute_frame_jacobian(self, q, frame=None, expressed_in=RF.LOCAL):
         """Compute the robot geometric Jacobian."""
-        if link_idx is None:
-            link_idx = self.tool_idx
+        idx = self._resolve_frame_index(frame)
         return pinocchio.computeFrameJacobian(
             self.model,
             self.data,
             q,
-            link_idx,
-            _ref_frame_from_string(frame),
+            idx,
+            expressed_in,
         )

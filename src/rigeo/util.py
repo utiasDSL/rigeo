@@ -1,9 +1,5 @@
 from pathlib import Path
 import numpy as np
-import cvxpy as cp
-
-# TODO remove this dep
-from mobile_manipulation_central import ros_utils
 
 
 def vech(J):
@@ -47,34 +43,6 @@ def lift6(x):
     # fmt: on
 
 
-def get_urdf_path():
-    """Obtain the path to the extra URDFs packaged with pyb_utils.
-
-    Returns
-    -------
-    : pathlib.Path
-        The path to the directory containing extra pyb_utils URDFs.
-    """
-    return Path(ros_utils.package_file_path("inertial_params", "urdf"))
-
-
-def schur(A, b, c):
-    """Construct the matrix [[A, b], [b.T, c]].
-
-    Parameters can be either cvxpy variables are numpy arrays.
-    """
-    # cvxpy variables
-    if np.any([isinstance(x, cp.Expression) for x in (A, b, c)]):
-        b = cp.reshape(b, (b.shape[0], 1))
-        c = cp.reshape(c, (1, 1))
-        return cp.bmat([[A, b], [b.T, c]])
-
-    # otherwise assume numpy
-    b = np.reshape(b, (b.shape[0], 1))
-    c = np.reshape(c, (1, 1))
-    return np.block([[A, b], [b.T, c]])
-
-
 def compute_evaluation_times(duration, step=0.1):
     """Compute times spaced at a fixed step across an interval.
 
@@ -108,3 +76,17 @@ def validation_rmse(Ys, ws, θ):
     mean = np.mean(square)
     root = np.sqrt(mean)
     return root
+
+
+def clean_transform(rotation, translation, dim):
+    if rotation is None:
+        rotation = np.eye(dim)
+    else:
+        rotation = np.array(rotation)
+
+    if translation is None:
+        translation = np.zeros(dim)
+    else:
+        translation = np.array(translation)
+
+    return rotation, translation

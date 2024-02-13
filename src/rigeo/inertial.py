@@ -16,53 +16,6 @@ def I2H(I):
     return 0.5 * np.trace(I) * np.eye(3) - I
 
 
-def pim_sum_vec_matrices():
-    """Generate the matrices A_i such that J == sum(A_i * θ_i)"""
-    As = [np.zeros((4, 4)) for _ in range(10)]
-    As[0][3, 3] = 1  # mass
-
-    # hx
-    As[1][0, 3] = 1
-    As[1][3, 0] = 1
-
-    # hy
-    As[2][1, 3] = 1
-    As[2][3, 1] = 1
-
-    # hz
-    As[3][2, 3] = 1
-    As[3][3, 2] = 1
-
-    # Ixx
-    As[4][0, 0] = -0.5
-    As[4][1, 1] = 0.5
-    As[4][2, 2] = 0.5
-
-    # Ixy
-    As[5][0, 1] = -1
-    As[5][1, 0] = -1
-
-    # Ixz
-    As[6][0, 2] = -1
-    As[6][2, 0] = -1
-
-    # Iyy
-    As[7][0, 0] = 0.5
-    As[7][1, 1] = -0.5
-    As[7][2, 2] = 0.5
-
-    # Iyz
-    As[8][1, 2] = -1
-    As[8][2, 1] = -1
-
-    # Izz
-    As[9][0, 0] = 0.5
-    As[9][1, 1] = 0.5
-    As[9][2, 2] = -0.5
-
-    return As
-
-
 class InertialParameters:
     """Inertial parameters of a rigid body.
 

@@ -7,9 +7,10 @@ import cvxpy as cp
 from scipy.linalg import orth, sqrtm
 
 from rigeo.polydd import SpanForm, FaceForm
-from rigeo.util import schur
+from rigeo.util import clean_transform
+from rigeo.constraint import schur, pim_must_equal_param_var
 from rigeo.random import random_weight_vectors, random_points_in_ball
-from rigeo.inertial import pim_sum_vec_matrices, InertialParameters
+from rigeo.inertial import InertialParameters
 
 
 def _inv_with_zeros(a, tol=1e-8):
@@ -37,34 +38,6 @@ def _box_vertices(half_extents, center, rotation):
     return (rotation @ v.T).T + center
 
 
-def _pim_from_param_var(param_var, eps):
-    assert eps >= 0
-    if param_var.shape == (4, 4):
-        J = param_var
-    elif param_var.shape == (10,):
-        As = pim_sum_vec_matrices()
-        J = cp.sum([A * p for A, p in zip(As, param_var)])
-    else:
-        raise ValueError(f"Parameter variable has unexpected shape {param_var.shape}")
-
-    return J, [J == J.T, J >> eps * np.eye(4)]
-
-
-def _clean_transform(rotation, translation, dim):
-    if rotation is None:
-        rotation = np.eye(dim)
-    else:
-        rotation = np.array(rotation)
-
-    if translation is None:
-        translation = np.zeros(dim)
-    else:
-        translation = np.array(translation)
-
-    return rotation, translation
-
-
-# TODO
 class Shape(abc.ABC):
     @abc.abstractmethod
     def contains(self, points, tol=1e-8):
@@ -228,7 +201,7 @@ class Shape(abc.ABC):
 
     @abc.abstractmethod
     def transform(self, rotation=None, translation=None):
-        """Apply an affine transform to the shape.
+        """Apply a rigid transform to the shape.
 
         Parameters
         ----------
@@ -449,7 +422,7 @@ class ConvexPolyhedron(Shape):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
-        J, psd_contraints = _pim_from_param_var(param_var, eps)
+        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
         m = J[3, 3]
         h = J[:3, 3]
         H = J[:3, :3]
@@ -465,7 +438,7 @@ class ConvexPolyhedron(Shape):
         ]
 
     def transform(self, rotation=None, translation=None):
-        rotation, translation = _clean_transform(
+        rotation, translation = clean_transform(
             rotation=rotation, translation=translation, dim=self.dim
         )
         new_vertices = self.vertices @ rotation.T + translation
@@ -619,7 +592,7 @@ class Box(ConvexPolyhedron):
         return self._ellipsoids
 
     def transform(self, rotation=None, translation=None):
-        rotation, translation = _clean_transform(
+        rotation, translation = clean_transform(
             rotation=rotation, translation=translation, dim=3
         )
         new_rotation = rotation @ self.rotation
@@ -670,8 +643,8 @@ class Box(ConvexPolyhedron):
         return np.all([np.trace(E.Q @ params.J) >= 0 for E in self._ellipsoids])
 
     def must_realize(self, param_var, eps=0):
-        J, psd_contraints = _pim_from_param_var(param_var, eps)
-        return psd_contraints + [cp.trace(E.Q @ J) >= 0 for E in self._ellipsoids]
+        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
+        return psd_constraints + [cp.trace(E.Q @ J) >= 0 for E in self._ellipsoids]
 
     def uniform_density_params(self, mass):
         """Generate the inertial parameters corresponding to a uniform mass density.
@@ -923,7 +896,7 @@ class Ellipsoid(Shape):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
-        J, psd_contraints = _pim_from_param_var(param_var, eps)
+        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
         return psd_constraints + [cp.trace(self.Q @ J) >= 0]
 
     def mbe(self, rcond=None, sphere=False):
@@ -959,7 +932,7 @@ class Ellipsoid(Shape):
         return X @ Ainv + self.center
 
     def transform(self, rotation=None, translation=None):
-        rotation, translation = _clean_transform(
+        rotation, translation = clean_transform(
             rotation=rotation, translation=translation, dim=self.dim
         )
         new_rotation = rotation @ self.rotation
@@ -1112,11 +1085,11 @@ class Cylinder(Shape):
         return np.all([np.trace(E.Q @ params.J) >= 0 for E in self._ellipsoids])
 
     def must_realize(self, param_var, eps=0):
-        J, psd_contraints = _pim_from_param_var(param_var, eps)
-        return psd_contraints + [cp.trace(E.Q @ J) >= 0 for E in self._ellipsoids]
+        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
+        return psd_constraints + [cp.trace(E.Q @ J) >= 0 for E in self._ellipsoids]
 
     def transform(self, rotation=None, translation=None):
-        rotation, translation = _clean_transform(
+        rotation, translation = clean_transform(
             rotation=rotation, translation=translation, dim=3
         )
         new_rotation = rotation @ self.rotation
@@ -1278,7 +1251,7 @@ class Capsule(Shape):
         return problem.status == "optimal"
 
     def must_realize(self, param_var, eps=0):
-        J, psd_contraints = _pim_from_param_var(param_var, eps)
+        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
         Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
         # TODO should eps be passed along to the shapes?
         return psd_constraints + [

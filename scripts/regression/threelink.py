@@ -13,6 +13,9 @@ import rigeo as rg
 
 import IPython
 
+# NOTE: the difference between poly and ellipsoid constraints depends on the
+# seed and the regularization coefficient (decreasing this makes poly better
+# when a poly is the actual bounding object)
 RECORDING_TIMESTEP = 0.1
 SIM_FREQ = 100
 GRAVITY = np.array([0, 0, -9.81])
@@ -22,6 +25,7 @@ VEL_NOISE_WIDTH = 0.1
 VEL_NOISE_BIAS = 0
 REGULARIZATION_COEFF = 1e-3
 
+SEED = 1
 VISUALIZE = False
 
 
@@ -47,70 +51,44 @@ class IPIDProblem:
         self.A = np.vstack(Ys)
         self.b = np.concatenate(τs)
 
-        self.θs = [cp.Variable(10) for _ in range(self.nb)]
-        self.Js = [cp.Variable((4, 4), PSD=True) for _ in range(self.nb)]
-
         self.J0_invs = [np.linalg.inv(p.J) for p in reg_params]
         self.reg_coeff = reg_coeff
 
-    def _solve(self, extra_constraints=None, name=None):
+    def solve(self, shapes=None, name=None):
+        θs = [cp.Variable(10) for _ in range(self.nb)]
+        Js = [rg.pim_must_equal_vec(θ) for θ in θs]
+
         # regularizer is the entropic distance proposed by (Lee et al., 2020)
         regularizer = cp.sum(
             [
                 -cp.log_det(J) + cp.trace(J0_inv @ J)
-                for J, J0_inv in zip(self.Js, self.J0_invs)
+                for J, J0_inv in zip(Js, self.J0_invs)
             ]
         )
 
         # psd_wrap fixes an occasional internal scipy error
         # https://github.com/cvxpy/cvxpy/issues/1421#issuecomment-865977139
-        θ = cp.hstack(self.θs)
+        θ = cp.hstack(θs)
         W = cp.psd_wrap(np.eye(self.b.shape[0]))
         objective = cp.Minimize(
             0.5 / self.no * cp.quad_form(self.A @ θ - self.b, W)
             + self.reg_coeff * regularizer
         )
 
+        # density realizability constraints
         constraints = []
-        for i in range(self.nb):
-            constraints.extend(rg.J_vec_constraint(self.Js[i], self.θs[i]))
-        if extra_constraints is not None:
-            constraints.extend(extra_constraints)
+        if shapes is not None:
+            for shape, J in zip(shapes, Js):
+                constraints.extend(shape.must_realize(J))
 
         problem = cp.Problem(objective, constraints)
-        problem.solve(solver=cp.MOSEK)
+        problem.solve(warm_start=False, solver=cp.MOSEK)
         assert problem.status == "optimal"
         if name is not None:
+            print(f"{name} iters = {problem.solver_stats.num_iters}")
             print(f"{name} solve time = {problem.solver_stats.solve_time}")
             print(f"{name} value = {problem.value}")
-        return [rg.InertialParameters.from_vector(θ.value) for θ in self.θs]
-        # return rg.InertialParameters.from_pseudo_inertia_matrix(self.Jopt.value)
-
-    def solve_nominal(self):
-        return self._solve(name="nominal")
-
-    def solve_ellipsoid(self, ellipsoids):
-        extra_constraints = [
-            cp.trace(ell.Q @ J) >= 0 for ell, J in zip(ellipsoids, self.Js)
-        ]
-        return self._solve(extra_constraints, name="ellipsoid")
-
-    def solve_polyhedron(self, boxes):
-        extra_constraints = []
-        for i, box in enumerate(boxes):
-            nv = box.vertices.shape[0]
-            mvs = cp.Variable(nv)
-            Vs = np.array([np.outer(v, v) for v in box.vertices])
-            extra_constraints.extend(
-                [
-                    mvs >= 0,
-                    cp.sum(mvs) == self.θs[i][0],
-                    mvs.T @ box.vertices == self.θs[i][1:4],
-                    self.Js[i][:3, :3] << cp.sum([m * V for m, V in zip(mvs, Vs)]),
-                ]
-            )
-        sol = self._solve(extra_constraints, name="poly")
-        return sol
+        return [rg.InertialParameters.from_vector(θ.value) for θ in θs]
 
 
 def sinusoidal_trajectory(t):
@@ -123,7 +101,7 @@ def sinusoidal_trajectory(t):
 
 def main():
     np.set_printoptions(suppress=True, precision=6)
-    np.random.seed(0)
+    np.random.seed(SEED)
 
     # compile the URDF
     xacro_doc = XacroDoc.from_package_file(
@@ -132,23 +110,17 @@ def main():
     )
 
     # load Pinocchio model
-    model = rg.RobotModel.from_urdf_string(xacro_doc.to_urdf_string(), gravity=GRAVITY)
-    # model = rg.RobotModel.from_urdf_string(xacro_doc.to_urdf_string(), gravity=np.zeros(3))
+    multi = rg.MultiBody.from_urdf_string(xacro_doc.to_urdf_string(), gravity=GRAVITY)
 
-    boxes = [model.boxes[name] for name in ["link1", "link2", "link3"]]
-    ellipsoids = [rg.minimum_bounding_ellipsoid(box.vertices) for box in boxes]
+    joints = ["link1_joint", "link2_joint", "link3_joint"]
+    bodies = multi.get_bodies(joints)
 
-    # actual inertial parameter values
-    # TODO transfer this into the Robot model
-    params = []
-    for i in range(1, 4):
-        iner = model.model.inertias[i]
-        mass = iner.mass
-        h = iner.lever / mass
-        Hc = rg.I2H(iner.inertia)
-        params.append(rg.InertialParameters.translate_from_com(mass, h, Hc))
+    params = [body.params for body in bodies]
     θ = np.concatenate([p.θ for p in params])
-    # θ_pin = np.concatenate([model.model.inertias[i].toDynamicParameters() for i in range(1, 4)])
+
+    # TODO brittle
+    boxes = [body.shapes[0] for body in bodies]
+    ellipsoids = [box.mbe() for box in boxes]
 
     n, ts_eval = rg.compute_evaluation_times(
         duration=2 * np.pi, step=RECORDING_TIMESTEP
@@ -162,7 +134,7 @@ def main():
     # generate the trajectory
     for i in range(n):
         q, v, a = sinusoidal_trajectory(i * RECORDING_TIMESTEP)
-        τ = model.compute_torques(q, v, a)
+        τ = multi.compute_joint_torques(q, v, a)
 
         qs.append(q)
         vs.append(v)
@@ -185,17 +157,14 @@ def main():
     Ys = []
     Ys_noisy = []
     for i in range(n):
-        Ys.append(model.compute_joint_torque_regressor(qs[i], vs[i], as_[i]))
+        Ys.append(multi.compute_joint_torque_regressor(qs[i], vs[i], as_[i]))
         if i < n - 1:
             Ys_noisy.append(
-                model.compute_joint_torque_regressor(qs_mid[i], vs_mid[i], as_mid[i])
+                multi.compute_joint_torque_regressor(qs_mid[i], vs_mid[i], as_mid[i])
             )
 
     Ys = np.array(Ys)
     Ys_noisy = np.array(Ys_noisy)
-
-    # IPython.embed()
-    # return
 
     # partition data
     n = vs.shape[0]
@@ -211,9 +180,9 @@ def main():
     prob = IPIDProblem(
         Ys_train, τs_train, reg_params=params, reg_coeff=REGULARIZATION_COEFF
     )
-    params_nom = prob.solve_nominal()
-    params_poly = prob.solve_polyhedron(boxes)
-    params_ell = prob.solve_ellipsoid(ellipsoids)
+    params_nom = prob.solve(name="nominal")
+    params_poly = prob.solve(shapes=boxes, name="poly")
+    params_ell = prob.solve(shapes=ellipsoids, name="ellipsoid")
 
     # results
     riemannian_err_nom = np.sum(
