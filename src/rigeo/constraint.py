@@ -2,15 +2,32 @@ import numpy as np
 import cvxpy as cp
 
 
-def schur(A, b, c):
-    """Construct the matrix [[A, b], [b.T, c]].
+def _shape_schur_var(X):
+    if np.isscalar(X):
+        X = cp.reshape(X, (1, 1))
+    elif X.ndim == 1:
+        X = cp.reshape(X, (X.shape[0], 1))
+    return X
 
-    Parameters must be cvxpy expressions.
+
+def schur(A, B, C):
+    """Construct the Schur complement matrix [[A, B], [B.T, C]].
+
+    Parameters
+    ----------
+    A : float or np.ndarray or cp.Expression
+    B : float or np.ndarray or cp.Expression
+    C : float or np.ndarray or cp.Expression
+
+    Returns
+    -------
+    : cp.Expression
+        The Schur complement matrix.
     """
-    # cvxpy variables
-    b = cp.reshape(b, (b.shape[0], 1))
-    c = cp.reshape(c, (1, 1))
-    return cp.bmat([[A, b], [b.T, c]])
+    A = _shape_schur_var(A)
+    B = _shape_schur_var(B)
+    C = _shape_schur_var(C)
+    return cp.bmat([[A, B], [B.T, C]])
 
 
 def _pim_sum_vec_matrices():
@@ -61,6 +78,20 @@ def _pim_sum_vec_matrices():
 
 
 def pim_must_equal_vec(θ):
+    """Generate a cvxpy expression that converts a parameter vector to
+    pseudo-inertia matrix.
+
+    Parameters
+    ----------
+    θ : np.ndarray or cp.Expression, shape (10,)
+        The inertial parameter vector.
+
+    Returns
+    -------
+    : cp.Expression, shape (4, 4)
+        The corresponding pseudo-inertia matrix.
+    """
+    assert θ.shape == (10,)
     return cp.sum([A * p for A, p in zip(_pim_sum_vec_matrices(), θ)])
 
 
@@ -74,3 +105,8 @@ def pim_must_equal_param_var(param_var, eps):
         raise ValueError(f"Parameter variable has unexpected shape {param_var.shape}")
 
     return J, [J == J.T, J >> eps * np.eye(4)]
+
+# TODO
+def pim_psd(J, ε=0):
+    assert ε >= 0
+    return [J == J.T, J >> ε * np.eye(4)]

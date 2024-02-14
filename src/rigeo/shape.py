@@ -98,14 +98,18 @@ class Shape(abc.ABC):
 
     # TODO include the numerical tolerance?
     @abc.abstractmethod
-    def can_realize(self, params, tol=1e-8):
+    def can_realize(self, params, tol=1e-8, solver=None):
         """Check if the shape can realize the inertial parameters.
 
         Parameters
         ----------
         params : InertialParameters
             The inertial parameters to check.
-        tol : Numerical
+        tol : float
+            Numerical tolerance for realization.
+        solver : str or None
+            If checking realizability requires solving an optimization problem,
+            one can optionally be specified.
 
         Returns
         -------
@@ -116,7 +120,8 @@ class Shape(abc.ABC):
 
     @abc.abstractmethod
     def must_realize(self, param_var, eps=0):
-        """Generate cvxpy constraints for inertial parameters to be realizable.
+        """Generate cvxpy constraints for inertial parameters to be realizable
+        on this shape.
 
         Parameters
         ----------
@@ -126,7 +131,7 @@ class Shape(abc.ABC):
             this is interpreted as the inertial parameter vector.
         eps : float, non-negative
             Pseudo-inertia matrix ``J`` is constrained such that ``J - eps *
-            np.eye(4)`` is positive semidefinite.
+            np.eye(4)`` is positive semidefinite and J is symmetric.
 
         Returns
         -------
@@ -637,7 +642,7 @@ class Box(ConvexPolyhedron):
         )
 
     # TODO numerical tolerance
-    def can_realize(self, params, tol=1e-8):
+    def can_realize(self, params, tol=1e-8, solver=None):
         if not params.consistent(tol=tol):
             return False
         return np.all([np.trace(E.Q @ params.J) >= 0 for E in self._ellipsoids])
@@ -884,7 +889,7 @@ class Ellipsoid(Shape):
             constraints.append(c)
         return constraints
 
-    def can_realize(self, params):
+    def can_realize(self, params, solver=None):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
@@ -1079,7 +1084,7 @@ class Cylinder(Shape):
             c for E in self._ellipsoids for c in E.must_contain(points, scale=scale)
         ]
 
-    def can_realize(self, params):
+    def can_realize(self, params, solver=None):
         if not params.consistent():
             return False
         return np.all([np.trace(E.Q @ params.J) >= 0 for E in self._ellipsoids])

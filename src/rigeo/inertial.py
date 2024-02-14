@@ -29,18 +29,22 @@ class InertialParameters:
         Second moment matrix.
     """
 
-    def __init__(self, mass, h, H, tol=1e-7):
+    def __init__(self, mass, h, H):
+        assert mass >= 0, f"Mass must be non-negative but is {mass}."
+
         self.mass = mass
         self.h = h
         self.H = H
 
-        assert mass >= -tol, f"Mass must be non-negative but is {mass}."
-
-        min_Hc_λ = np.min(np.linalg.eigvals(self.Hc))
-        assert min_Hc_λ >= -tol, f"Hc must be p.s.d. but min eigenval is {min_H_λ}"
+        # min_Hc_λ = np.min(np.linalg.eigvals(self.Hc))
+        # assert min_Hc_λ >= -tol, f"Hc must be p.s.d. but min eigenval is {min_H_λ}"
 
     def __repr__(self):
         return f"InertialParameters(mass={self.mass}, h={self.h}, H={self.H})"
+
+    @classmethod
+    def zero(cls):
+        return cls(mass=0, h=np.zeros(3), H=np.zeros((3, 3)))
 
     @property
     def com(self):
