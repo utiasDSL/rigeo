@@ -1,5 +1,6 @@
 import argparse
 import time
+from enum import Enum
 
 import numpy as np
 import cvxpy as cp
@@ -23,86 +24,13 @@ GRAVITY = np.array([0, 0, -9.81])
 TRAIN_TEST_SPLIT = 0.5
 VEL_NOISE_WIDTH = 0.1
 VEL_NOISE_BIAS = 0
+
 REGULARIZATION_COEFF = 1e-3
-EPS = 1e-4
+PIM_EPS = 1e-4
+SOLVER = cp.MOSEK
 
 SEED = 1
 VISUALIZE = False
-
-
-def entropic_regularizer(Js, J0s):
-    # TODO handle single values
-    assert len(Js) == len(J0s)
-    return cp.sum(
-        [-cp.log_det(J) + cp.trace(np.linalg.inv(J0) @ J) for J, J0 in zip(Js, J0s)]
-    )
-
-
-def least_squares_objective(θs, As, bs, W0=None):
-    if W0 is None:
-        W0 = np.eye(self.bs.shape[1])
-
-    # psd_wrap fixes an occasional internal scipy error
-    # https://github.com/cvxpy/cvxpy/issues/1421#issuecomment-865977139
-    W = cp.psd_wrap(np.kron(np.eye(self.bs.shape[0]), W0))
-
-    A = np.vstack(As)
-    b = np.concatenate(bs)
-    θ = cp.hstack(θs)
-    return cp.quad_form(A @ θ - b, W)
-
-
-# def solve(bodies, Ys, τs, reg_coeff=1e-3):
-#     θs = [cp.Variable(10) for _ in bodies]
-#     Js = [rg.pim_must_equal_vec(θ) for θ in θs]
-#
-#     # regularizer is the entropic distance proposed by (Lee et al., 2020)
-#     regularizer = entropic_regularizer(Js, J0s)
-#     lstsq = least_squares_objective(θs, Ys, τs)
-#     cost = 0.5 / len(bodies) * lstsq + reg_coeff * regularizer
-#     objective = cp.Minimize(cost)
-#
-#     # TODO how to handle unbounded case?
-#     constraints = []
-#     for body, J in zip(bodies, Js):
-#         constraints.extend(body.must_realize(J))
-
-
-class IDProb:
-    def __init__(self, As, bs, γ=0, ε=0):
-        assert As.shape[0] == bs.shape[0]
-        assert γ >= 0
-        assert ε >= 0
-
-        self.As = As
-        self.bs = bs
-
-        self.γ = γ
-        self.ε = ε
-
-    def solve(bodies, must_realize=True, **kwargs):
-        # variables
-        θs = [cp.Variable(10) for _ in bodies]
-        Js = [rg.pim_must_equal_vec(θ) for θ in θs]
-
-        # objective
-        J0s = [body.params.J for body in bodies]
-        regularizer = entropic_regularizer(Js, J0s)
-
-        lstsq = least_squares_objective(θs, self.As, self.bs)
-        cost = 0.5 / len(bodies) * lstsq + self.γ * regularizer
-        objective = cp.Minimize(cost)
-
-        # constraints
-        constraints = [c for J in Js for c in pim_psd(J, self.ε)]
-        if must_realize:
-            for body, J in zip(bodies, Js):
-                constraints.extend(body.must_realize(J))
-
-        problem = cp.Problem(objective, constraints)
-        problem.solve(**kwargs)
-        assert problem.status == "optimal"
-        return [rg.InertialParameters.from_vector(θ.value) for θ in θs]
 
 
 class IPIDProblem:
@@ -147,7 +75,7 @@ class IPIDProblem:
         )
 
         # density realizability constraints
-        constraints = []
+        constraints = [c for J in Js for c in rg.pim_psd(J, PIM_EPS)]
         if shapes is not None:
             for shape, J in zip(shapes, Js):
                 constraints.extend(shape.must_realize(J))
@@ -185,11 +113,12 @@ def main():
 
     joints = ["link1_joint", "link2_joint", "link3_joint"]
     bodies = multi.get_bodies(joints)
+    bodies_mbe = [body.mbes() for body in bodies]
 
     params = [body.params for body in bodies]
     θ = np.concatenate([p.θ for p in params])
-
-    # TODO brittle
+    #
+    # # TODO brittle
     boxes = [body.shapes[0] for body in bodies]
     ellipsoids = [box.mbe() for box in boxes]
 
@@ -255,11 +184,21 @@ def main():
     # params_poly = prob.solve(shapes=boxes, name="poly")
     # params_ell = prob.solve(shapes=ellipsoids, name="ellipsoid")
 
-    # TODO want this to be reusable for the different approaches: nominal,
-    # different bodies
-    # problem is that shapes and nominal params are coupled in the bodies
-    # this suggests that I should indeed pass bodies to solve(...)
-    params_nom = IDProb(bodies, Ys_train, τs_train, ε=EPS, γ=REGULARIZATION_COEFF).solve()
+
+    prob = rg.IdentificationProblem(
+        As=Ys_train, bs=τs_train, γ=REGULARIZATION_COEFF, ε=PIM_EPS, solver=SOLVER
+    )
+
+    def solve_with_info(bodies, must_realize, name):
+        P = prob.solve(bodies, must_realize=must_realize)
+        print(f"{name} iters = {prob.problem.solver_stats.num_iters}")
+        print(f"{name} solve time = {prob.problem.solver_stats.solve_time}")
+        print(f"{name} value = {prob.problem.value}")
+        return P
+
+    params_nom = solve_with_info(bodies, must_realize=False, name="nominal")
+    params_poly = solve_with_info(bodies, must_realize=True, name="poly")
+    params_ell = solve_with_info(bodies_mbe, must_realize=True, name="ellipsoid")
 
     # results
     riemannian_err_nom = np.sum(

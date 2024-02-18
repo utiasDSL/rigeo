@@ -109,7 +109,7 @@ class Shape(abc.ABC):
             Numerical tolerance for realization.
         solver : str or None
             If checking realizability requires solving an optimization problem,
-            one can optionally be specified.
+            a solver can optionally be specified.
 
         Returns
         -------
@@ -159,6 +159,9 @@ class Shape(abc.ABC):
         ----------
         sphere : bool
             If ``True``, force the ellipsoid to be a sphere.
+        solver : str or None
+            If generating the minimum bounding ellipsoid requires solving an
+            optimization problem, a solver can optionally be specified.
 
         Returns
         -------

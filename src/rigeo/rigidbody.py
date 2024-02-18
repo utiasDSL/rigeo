@@ -109,7 +109,7 @@ class RigidBody:
             List of cvxpy constraints.
         """
         if len(self.shapes) == 1:
-            return shapes[0].must_realize(param_var, eps=eps)
+            return self.shapes[0].must_realize(param_var, eps=eps)
 
         J, psd_constraints = pim_must_equal_param_var(param_var, eps=eps)
         Js = [cp.Variable((4, 4), PSD=True) for _ in self.shapes]
@@ -122,6 +122,26 @@ class RigidBody:
             + [J == cp.sum(Js)]
             + psd_constraints
         )
+
+    def mbes(self, sphere=False, solver=None):
+        """Generate a new rigid body with each shape replaced with its bounding ellipsoid.
+
+        Parameters
+        ----------
+        sphere : bool
+            If ``True``, use bounding spheres rather than ellipsoids.
+        solver : str or None
+            If generating the minimum bounding ellipsoid requires solving an
+            optimization problem, a solver can optionally be specified.
+
+        Returns
+        -------
+        : RigidBody
+            The new body with the same inertial parameters but each shapes
+            replaced by its minimum-volume bounding ellipsoid.
+        """
+        shapes = [shape.mbe(sphere=sphere, solver=solver) for shape in self.shapes]
+        return RigidBody(shapes=shapes, params=self.params)
 
     def transform(self, rotation=None, translation=None):
         """Apply a rigid transform to the body.
