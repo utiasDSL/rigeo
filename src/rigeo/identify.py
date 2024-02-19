@@ -6,14 +6,61 @@ from rigeo.inertial import InertialParameters
 
 
 def entropic_regularizer(Js, J0s):
-    # TODO handle single values
+    # TODO reference
+    """Entropic regularizer from (Lee, Wensing, and Park, 2020)
+
+    The regularizer is convex in ``Js``.
+
+    Parameters
+    ----------
+    Js : cp.Expression or Iterable[cp.Expression]
+        The pseudo-inertia matrix variables to regularize.
+    J0s : np.ndarray, shape (4, 4), or Iterable[np.ndarray]
+        The nominal values for the pseudo-inertia matrices.
+
+    Returns
+    -------
+    : cp.Expression
+        The cvxpy expression for the regularizer.
+    """
+    J0s = np.array(J0s)
+    if J0s.ndim == 2:
+        J0s = [J0s]
+        Js = [Js]
     assert len(Js) == len(J0s)
+    assert Js[0].shape == (4, 4)
+    assert J0s[0].shape == (4, 4)
+
     return cp.sum(
         [-cp.log_det(J) + cp.trace(np.linalg.inv(J0) @ J) for J, J0 in zip(Js, J0s)]
     )
 
 
 def least_squares_objective(θs, As, bs, W0=None):
+    """Least squares objective function.
+
+    .. math::
+       \\sum_i \\|\\boldsymbol{A}_i\\boldsymbol{\\theta} - \\boldsymbol{b}_i\\|^2
+
+    where :math:`\\boldsymbol{\\theta}=[\\boldsymbol{\\theta}_1,\\dots,\\boldsymbol{\\theta}_m]`
+
+    Parameters
+    ----------
+    θs : cp.Expression or Iterable[cp.Expression]
+        The regressor variables.
+    As : np.ndarray or Iterable[np.ndarray]
+        The regressor matrices.
+    bs : np.ndarray or Iterable[np.ndarray]
+        The regressor vectors.
+    W0 : np.ndarray or None
+        The inverse measurement covariance matrix. Defaults to identity if not
+        provided.
+
+    Returns
+    -------
+    : cp.Expression
+        The cxvpy expression for the objective.
+    """
     if W0 is None:
         W0 = np.eye(bs.shape[1])
 
@@ -28,6 +75,28 @@ def least_squares_objective(θs, As, bs, W0=None):
 
 
 class IdentificationProblem:
+    """Inertial parameter identification problem.
+
+    The problem is formulated as a convex, constrained least-squares problem
+    and solved via cxvpy.
+
+    Attributes
+    ----------
+    As : np.ndarray or Iterable[np.ndarray]
+        The regressor matrices.
+    bs : np.ndarray or Iterable[np.ndarray]
+        The regressor vectors.
+    γ : float, non-negative
+        The coefficient of the regularization term.
+    ε : float, non-negative
+        The value such that each body satisfies
+        :math:`\\boldsymbol{J}\\succcurlyeq\\epsilon\\boldsymbol{1}_4`.
+    solver : str or None
+        The underlying solver for cvxpy to use.
+    problem : cp.Problem
+        Once ``solve`` has been called, the underlying ``cvxpy.Problem``
+        instance is made available for inspection.
+    """
     def __init__(self, As, bs, γ=0, ε=0, solver=None):
         assert As.shape[0] == bs.shape[0]
         assert γ >= 0
@@ -44,6 +113,27 @@ class IdentificationProblem:
         self.solver = solver
 
     def solve(self, bodies, must_realize=True, **kwargs):
+        """Solve the identification problem.
+
+        Additional ``kwargs`` are passed to the `solve` method of the
+        `cvxpy.Problem` instance.
+
+        Parameters
+        ----------
+        bodies : Iterable[RigidBody]
+            The rigid bodies used to (1) constrain the parameters to be
+            realizable within their shapes and (2) to provide nominal
+            parameters for regularization.
+        must_realize : bool
+            If ``True``, enforce density realizable constraints. If ``False``,
+            the problem is unconstrained except that each pseudo-inertia matrix
+            must be positive definite.
+
+        Returns
+        -------
+        : Iterable[InertialParameters]
+            The identified inertial parameters for each body.
+        """
         # variables
         θs = [cp.Variable(10) for _ in bodies]
         Js = [pim_must_equal_vec(θ) for θ in θs]
