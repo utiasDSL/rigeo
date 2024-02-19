@@ -6,22 +6,22 @@ from rigeo.inertial import InertialParameters
 
 
 def entropic_regularizer(Js, J0s):
-    # TODO reference
-    """Entropic regularizer from (Lee, Wensing, and Park, 2020)
+    """Entropic regularizer for inertial parameter identification.
 
-    The regularizer is convex in ``Js``.
+    See :cite:t:`lee2019geometric`. The regularizer is convex in ``Js``.
 
     Parameters
     ----------
-    Js : cp.Expression or Iterable[cp.Expression]
+    Js : cxvpy.Expression or Iterable[cxvpy.Expression]
         The pseudo-inertia matrix variables to regularize.
     J0s : np.ndarray, shape (4, 4), or Iterable[np.ndarray]
         The nominal values for the pseudo-inertia matrices.
 
     Returns
     -------
-    : cp.Expression
+    : cxvpy.Expression
         The cvxpy expression for the regularizer.
+
     """
     J0s = np.array(J0s)
     if J0s.ndim == 2:
@@ -37,16 +37,16 @@ def entropic_regularizer(Js, J0s):
 
 
 def least_squares_objective(θs, As, bs, W0=None):
-    """Least squares objective function.
+    """Least squares objective function
 
     .. math::
        \\sum_i \\|\\boldsymbol{A}_i\\boldsymbol{\\theta} - \\boldsymbol{b}_i\\|^2
 
-    where :math:`\\boldsymbol{\\theta}=[\\boldsymbol{\\theta}_1,\\dots,\\boldsymbol{\\theta}_m]`
+    where :math:`\\boldsymbol{\\theta}=[\\boldsymbol{\\theta}_1,\\dots,\\boldsymbol{\\theta}_m]`.
 
     Parameters
     ----------
-    θs : cp.Expression or Iterable[cp.Expression]
+    θs : cxvpy.Expression or Iterable[cxvpy.Expression]
         The regressor variables.
     As : np.ndarray or Iterable[np.ndarray]
         The regressor matrices.
@@ -58,7 +58,7 @@ def least_squares_objective(θs, As, bs, W0=None):
 
     Returns
     -------
-    : cp.Expression
+    : cxvpy.Expression
         The cxvpy expression for the objective.
     """
     if W0 is None:
@@ -93,7 +93,7 @@ class IdentificationProblem:
         :math:`\\boldsymbol{J}\\succcurlyeq\\epsilon\\boldsymbol{1}_4`.
     solver : str or None
         The underlying solver for cvxpy to use.
-    problem : cp.Problem
+    problem : cxvpy.Problem
         Once ``solve`` has been called, the underlying ``cvxpy.Problem``
         instance is made available for inspection.
     """

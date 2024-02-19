@@ -44,7 +44,10 @@ extensions = [
     'sphinx.ext.viewcode',
     'sphinx.ext.napoleon',
     'sphinx.ext.mathjax',
+    'sphinxcontrib.bibtex',
 ]
+
+bibtex_bibfiles = ['bibliography.bib']
 
 # Add any paths that contain templates here, relative to this directory.
 templates_path = ['_templates']

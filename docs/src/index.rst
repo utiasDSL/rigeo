@@ -11,3 +11,6 @@ rigeo: rigid body geometry
    :caption: Module Reference
 
    modules
+
+.. bibliography::
+   :style: plain

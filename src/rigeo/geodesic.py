@@ -5,8 +5,8 @@ def positive_definite_distance(A, B):
     """Geodesic distance between two symmetric positive definite matrices
     :math:`A` and :math:`B`.
 
-    This metric is coordinate-frame invariant. See (Lee and Park, 2018) for
-    more details.
+    This metric is coordinate-frame invariant. See :cite:t:`lee2019geometric`.
+    for more details.
 
     Parameters
     ----------
@@ -23,5 +23,4 @@ def positive_definite_distance(A, B):
     assert A.shape == B.shape, "Matrices must have the same shape."
     C = np.linalg.solve(A, B)
     eigs = np.linalg.eigvals(C)
-    # TODO: (Lee, Wensing, and Park, 2020) includes the factor of 0.5
     return np.sqrt(0.5 * np.sum(np.log(eigs) ** 2))
