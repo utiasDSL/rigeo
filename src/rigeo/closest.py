@@ -9,7 +9,7 @@ import cvxpy as cp
 class ClosestPointInfo:
     """Information about a closest point query.
 
-    Attributes
+    Parameters
     ----------
     p1 : np.ndarray
         The closest point on the first shape.

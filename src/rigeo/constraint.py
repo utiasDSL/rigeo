@@ -11,7 +11,10 @@ def _shape_schur_var(X):
 
 
 def schur(A, B, C):
-    """Construct the Schur complement matrix [[A, B], [B.T, C]].
+    """Construct the Schur complement matrix
+
+    .. math::
+        \\begin{bmatrix} \\boldsymbol{A} & \\boldsymbol{B} \\\\ \\boldsymbol{B}^T & \\boldsymbol{C} \\end{bmatrix}
 
     Parameters
     ----------

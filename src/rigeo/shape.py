@@ -678,15 +678,12 @@ class Box(ConvexPolyhedron):
 
 
 class Ellipsoid(Shape):
-    """Ellipsoid in ``dim`` dimensions.
-
-    The ellipsoid may be degenerate in two ways:
-    1. If one or more half extents is infinite, then the ellipsoid is unbounded
-       along one or more axes.
-    2. If one or more half extents is zero, then the ellipsoid actually lives
-       in a lower-dimensional subspace.
-    """
-
+    """Ellipsoid in ``dim`` dimensions."""
+    # The ellipsoid may be degenerate in two ways:
+    # 1. If one or more half extents is infinite, then the ellipsoid is unbounded
+    #    along one or more axes.
+    # 2. If one or more half extents is zero, then the ellipsoid actually lives
+    #    in a lower-dimensional subspace.
     def __init__(self, half_extents, rotation=None, center=None):
         self.half_extents = np.array(half_extents)
         assert np.all(self.half_extents >= 0)
