@@ -96,9 +96,8 @@ class Shape(abc.ABC):
         """
         pass
 
-    # TODO include the numerical tolerance?
     @abc.abstractmethod
-    def can_realize(self, params, tol=1e-8, solver=None):
+    def can_realize(self, params, tol=0, solver=None):
         """Check if the shape can realize the inertial parameters.
 
         Parameters
@@ -106,7 +105,8 @@ class Shape(abc.ABC):
         params : InertialParameters
             The inertial parameters to check.
         tol : float
-            Numerical tolerance for realization.
+            Numerical tolerance for realization. This is applied in a
+            shape-dependent manner.
         solver : str or None
             If checking realizability requires solving an optimization problem,
             a solver can optionally be specified.
@@ -405,11 +405,12 @@ class ConvexPolyhedron(Shape):
             return None
         return ConvexPolyhedron(span_form=span_form)
 
-    def can_realize(self, params, solver=None):
+    def can_realize(self, params, tol=0, solver=None):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
-        if not params.consistent():
+        assert tol >= 0, "Numerical tolerance cannot be negative."
+        if not params.consistent(tol=tol):
             return False
 
         Vs = np.array([np.outer(v, v) for v in self.vertices])
@@ -644,11 +645,11 @@ class Box(ConvexPolyhedron):
             half_extents=half_extents, center=self.center, rotation=self.rotation
         )
 
-    # TODO numerical tolerance
-    def can_realize(self, params, tol=1e-8, solver=None):
+    def can_realize(self, params, tol=0, solver=None):
+        assert tol >= 0, "Numerical tolerance cannot be negative."
         if not params.consistent(tol=tol):
             return False
-        return np.all([np.trace(E.Q @ params.J) >= 0 for E in self._ellipsoids])
+        return np.all([np.trace(E.Q @ params.J) >= -tol for E in self._ellipsoids])
 
     def must_realize(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
@@ -889,13 +890,14 @@ class Ellipsoid(Shape):
             constraints.append(c)
         return constraints
 
-    def can_realize(self, params, solver=None):
+    def can_realize(self, params, tol=0, solver=None):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
-        if not params.consistent():
+        assert tol >= 0, "Numerical tolerance cannot be negative."
+        if not params.consistent(tol=tol):
             return False
-        return np.trace(self.Q @ params.J) >= 0
+        return np.trace(self.Q @ params.J) >= -tol
 
     def must_realize(self, param_var, eps=0):
         assert (
@@ -1084,10 +1086,11 @@ class Cylinder(Shape):
             c for E in self._ellipsoids for c in E.must_contain(points, scale=scale)
         ]
 
-    def can_realize(self, params, solver=None):
-        if not params.consistent():
+    def can_realize(self, params, tol=0, solver=None):
+        assert tol >= 0, "Numerical tolerance cannot be negative."
+        if not params.consistent(tol=tol):
             return False
-        return np.all([np.trace(E.Q @ params.J) >= 0 for E in self._ellipsoids])
+        return np.all([np.trace(E.Q @ params.J) >= -tol for E in self._ellipsoids])
 
     def must_realize(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
@@ -1241,8 +1244,9 @@ class Capsule(Shape):
         )
         return Capsule(cylinder=new_cylinder)
 
-    def can_realize(self, params, solver=None):
-        if not params.consistent():
+    def can_realize(self, params, tol=0, solver=None):
+        assert tol >= 0, "Numerical tolerance cannot be negative."
+        if not params.consistent(tol=tol):
             return False
 
         Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
