@@ -520,13 +520,17 @@ class Box(ConvexPolyhedron):
         super().__init__(span_form=SpanForm(vertices))
 
         self._ellipsoids = []
+        self._Us = []
         for i, r in enumerate(self.half_extents):
-            half_extents = np.inf * np.ones(self.dim)
-            half_extents[i] = r
-            ell = Ellipsoid(
-                half_extents=half_extents, rotation=self.rotation, center=self.center
-            )
+            u = self.rotation[i, :]
+
+            ell = Ellipsoid(half_extents=r, center=u @ self.center)
             self._ellipsoids.append(ell)
+
+            U = np.zeros((4, 2))
+            U[:3, 0] = u
+            U[3, 1] = 1
+            self._Us.append(U)
 
     @classmethod
     def cube(cls, half_extent, center=None, rotation=None):
@@ -596,9 +600,9 @@ class Box(ConvexPolyhedron):
                     points.append(point)
         return np.array(points)
 
-    def as_ellipsoidal_intersection(self):
-        """Construct a set of ellipsoids, the intersection of which is the box."""
-        return self._ellipsoids
+    # def as_ellipsoidal_intersection(self):
+    #     """Construct a set of ellipsoids, the intersection of which is the box."""
+    #     return self._ellipsoids
 
     def transform(self, rotation=None, translation=None):
         rotation, translation = clean_transform(
@@ -649,11 +653,18 @@ class Box(ConvexPolyhedron):
         assert tol >= 0, "Numerical tolerance cannot be negative."
         if not params.consistent(tol=tol):
             return False
-        return np.all([np.trace(E.Q @ params.J) >= -tol for E in self._ellipsoids])
+        return np.all(
+            [
+                np.trace(U.T @ params.J @ U @ E.Q) >= -tol
+                for E, U in zip(self._ellipsoids, self._Us)
+            ]
+        )
 
     def must_realize(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-        return psd_constraints + [cp.trace(E.Q @ J) >= 0 for E in self._ellipsoids]
+        return psd_constraints + [
+            cp.trace(U.T @ J @ U @ E.Q) >= 0 for E, U in zip(self._ellipsoids, self._Us)
+        ]
 
     def uniform_density_params(self, mass):
         """Generate the inertial parameters corresponding to a uniform mass density.
@@ -680,27 +691,30 @@ class Box(ConvexPolyhedron):
 
 class Ellipsoid(Shape):
     """Ellipsoid in ``dim`` dimensions."""
+
     # The ellipsoid may be degenerate in two ways:
     # 1. If one or more half extents is infinite, then the ellipsoid is unbounded
     #    along one or more axes.
     # 2. If one or more half extents is zero, then the ellipsoid actually lives
     #    in a lower-dimensional subspace.
     def __init__(self, half_extents, rotation=None, center=None):
+        if np.isscalar(half_extents):
+            half_extents = [half_extents]
         self.half_extents = np.array(half_extents)
         assert np.all(self.half_extents >= 0)
 
         self.half_extents_inv = _inv_with_zeros(self.half_extents)
 
         if rotation is None:
-            self.rotation = np.eye(self.dim)
-        else:
-            self.rotation = np.array(rotation)
+            rotation = np.eye(self.dim)
+        self.rotation = np.array(rotation)
         assert self.rotation.shape == (self.dim, self.dim)
 
         if center is None:
-            self.center = np.zeros(self.dim)
-        else:
-            self.center = np.array(center)
+            center = np.zeros(self.dim)
+        elif np.isscalar(center):
+            center = [center]
+        self.center = np.array(center)
         assert self.center.shape == (self.dim,)
 
     @property

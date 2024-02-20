@@ -74,7 +74,3 @@ def test_rotation():
     assert np.allclose(box3.half_extents, box1.half_extents)
     assert np.allclose(box3.center, box1.center)
     assert np.allclose(box3.vertices, box2.vertices)
-
-    # check that ellipsoidal intersection still holds
-    for ell in box2.as_ellipsoidal_intersection():
-        assert ell.contains(box2.vertices).all()
