@@ -236,7 +236,7 @@ def main():
             reg_mass = 1.0
             reg_com = box.center
             reg_inertia = rg.cuboid_inertia_matrix(reg_mass, box.half_extents)
-            reg_params = rg.InertialParameters.from_mcI(
+            reg_params = rg.InertialParameters(
                 mass=reg_mass, com=reg_com, I=reg_inertia
             )
 

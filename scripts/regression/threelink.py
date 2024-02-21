@@ -116,7 +116,7 @@ def main():
     bodies_mbe = [body.mbes() for body in bodies]
 
     params = [body.params for body in bodies]
-    θ = np.concatenate([p.θ for p in params])
+    θ = np.concatenate([p.vec for p in params])
     #
     # # TODO brittle
     boxes = [body.shapes[0] for body in bodies]
@@ -211,13 +211,13 @@ def main():
         [rg.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_poly)]
     )
 
-    θ_nom = np.concatenate([p.θ for p in params_nom])
+    θ_nom = np.concatenate([p.vec for p in params_nom])
     validation_err_nom = rg.validation_rmse(Ys_test, τs_test, θ_nom)
 
-    θ_ell = np.concatenate([p.θ for p in params_ell])
+    θ_ell = np.concatenate([p.vec for p in params_ell])
     validation_err_ell = rg.validation_rmse(Ys_test, τs_test, θ_ell)
 
-    θ_poly = np.concatenate([p.θ for p in params_poly])
+    θ_poly = np.concatenate([p.vec for p in params_poly])
     validation_err_poly = rg.validation_rmse(Ys_test, τs_test, θ_poly)
 
     print("\nRiemannian error")

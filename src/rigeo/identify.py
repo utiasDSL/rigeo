@@ -158,4 +158,4 @@ class IdentificationProblem:
         assert (
             self.problem.status == "optimal"
         ), f"Optimization failed with status {problem.status}"
-        return [InertialParameters.from_vector(θ.value) for θ in θs]
+        return [InertialParameters.from_vec(θ.value) for θ in θs]

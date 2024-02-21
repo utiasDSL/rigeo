@@ -9,19 +9,6 @@ from rigeo.inertial import I2H, InertialParameters
 from rigeo.rigidbody import RigidBody
 
 
-# TODO want something more elegant than this
-# def _ref_frame_from_string(s):
-#     """Translate a string to pinocchio's ReferenceFrame enum value."""
-#     s = s.lower()
-#     if s == "local":
-#         return pinocchio.ReferenceFrame.LOCAL
-#     if s == "local_world_aligned":
-#         return pinocchio.ReferenceFrame.LOCAL_WORLD_ALIGNED
-#     if s == "world":
-#         return pinocchio.ReferenceFrame.WORLD
-#     raise ValueError(f"{s} is not a valid Pinocchio reference frame.")
-
-
 RF = pinocchio.ReferenceFrame
 
 
@@ -90,10 +77,12 @@ class MultiBody:
             if joint_idx in self.bodies:
                 self.bodies[joint_idx].shapes.append(shape)
             else:
-                mass = inertia.mass
-                h = mass * inertia.lever
-                Hc = I2H(inertia.inertia)
-                params = InertialParameters.translate_from_com(mass, h, Hc)
+                params = InertialParameters(
+                    mass=inertia.mass,
+                    com=inertia.lever,
+                    I=inertia.inertia,
+                    translate_from_com=True,
+                )
                 self.bodies[joint_idx] = RigidBody(shapes=[shape], params=params)
 
     @classmethod
@@ -135,7 +124,23 @@ class MultiBody:
         )
 
     def get_joint_index(self, name):
-        # TODO
+        """Get the index of a joint by name.
+
+        Parameters
+        ----------
+        name : str
+            The name of the joint.
+
+        Returns
+        -------
+        : int
+            The index of the joint.
+
+        Raises
+        ------
+        ValueError
+            If the joint does not exist.
+        """
         if not self.model.existJointName(name):
             raise ValueError(f"Model has no joint named {name}.")
         return self.model.getJointId(name)
@@ -181,7 +186,7 @@ class MultiBody:
 
         Parameters
         ----------
-        joints : list[str] or list[int]
+        joints : Iterable[str or int]
             Joints to get the bodies for. Can either be specified by name or
             index.
 
@@ -192,6 +197,30 @@ class MultiBody:
         """
         indices = [self._resolve_joint_index(joint) for joint in joints]
         return [self.bodies[idx] for idx in indices]
+
+    def is_realizable(self, joints=None, solver=None):
+        """Check if (a subset of) the multibody is density realizable.
+
+        Parameters
+        ----------
+        joints : Iterable[str or int] or None
+            If not ``None``, only check density realizability on the bodies
+            corresponding to these joints.
+            index.
+        solver : str or None
+            If checking realizability requires solving an optimization problem,
+            one can optionally be specified.
+
+        Returns
+        -------
+        : bool
+            ``True`` if the given joints are realizable, ``False`` otherwise.
+        """
+        if joints is not None:
+            bodies = self.get_bodies(joints)
+        else:
+            bodies = self.bodies
+        return np.all([body.is_realizable(solver=solver) for body in bodies])
 
     def compute_forward_kinematics(self, q, v=None, a=None):
         """Compute forward kinematics.

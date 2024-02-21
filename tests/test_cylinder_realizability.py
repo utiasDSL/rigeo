@@ -3,10 +3,6 @@ import numpy as np
 import rigeo as rg
 
 
-def Q_matrices(shape):
-    return [ell.Q for ell in shape.as_ellipsoidal_intersection()]
-
-
 def test_cylinder_at_origin():
     np.random.seed(0)
 
@@ -15,7 +11,6 @@ def test_cylinder_at_origin():
 
     cylinder = rg.Cylinder(length=1, radius=0.5)
     bounding_box = rg.Box(half_extents=[0.5, 0.5, 0.5])
-    Qs = Q_matrices(cylinder)
 
     for i in range(N):
         for j in range(10):
@@ -31,12 +26,12 @@ def test_cylinder_at_origin():
 
         masses = np.random.random(points.shape[0])
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-        assert np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+        assert cylinder.can_realize(params)
 
     points = np.array([[0, 0.5, 0.5], [0, -0.5, -0.5]])
     masses = [0.5, 0.5]
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+    assert cylinder.can_realize(params)
 
     # fmt: off
     points = 0.5 * np.array([
@@ -45,13 +40,13 @@ def test_cylinder_at_origin():
     # fmt: on
     masses = np.ones(8)
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+    assert cylinder.can_realize(params)
 
     # infeasible cases
     points = 1.1 * np.array([[0, 0.5, 0.5], [0, -0.5, -0.5]])
     masses = [0.5, 0.5]
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+    assert not cylinder.can_realize(params)
 
     points = 0.6 * np.array([
         [1., 0, 1], [0, 1, 1], [-1, 0, 1], [0, -1, 1],
@@ -59,4 +54,4 @@ def test_cylinder_at_origin():
     # fmt: on
     masses = np.ones(8)
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not np.all([np.trace(Q @ params.J) >= 0 for Q in Qs])
+    assert not cylinder.can_realize(params)

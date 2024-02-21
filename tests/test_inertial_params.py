@@ -15,7 +15,7 @@ def test_addition():
 
     assert np.allclose(p_sum.J, 2 * p1.J)
     assert np.allclose(p_sum.I, 2 * p1.I)
-    assert np.allclose(p_sum.θ, 2 * p1.θ)
+    assert np.allclose(p_sum.vec, 2 * p1.vec)
 
     # more complex example with non-zero h
     h = np.array([1, 2, 3])
@@ -25,7 +25,7 @@ def test_addition():
 
     assert np.allclose(p_sum.J, p1.J + p2.J)
     assert np.allclose(p_sum.I, p1.I + p2.I)
-    assert np.allclose(p_sum.θ, p1.θ + p2.θ)
+    assert np.allclose(p_sum.vec, p1.vec + p2.vec)
 
 
 def test_representations():
@@ -35,9 +35,9 @@ def test_representations():
     H = rg.I2H(Ic) + np.outer(h, h) / mass
 
     p1 = rg.InertialParameters(mass=mass, h=h, H=H)
-    p2 = rg.InertialParameters.from_vector(p1.θ)
-    p3 = rg.InertialParameters.from_pseudo_inertia_matrix(p1.J)
-    p4 = rg.InertialParameters.from_mcI(mass=p1.mass, com=p1.com, I=p1.I)
+    p2 = rg.InertialParameters.from_vec(p1.vec)
+    p3 = rg.InertialParameters.from_pim(p1.J)
+    p4 = rg.InertialParameters(mass=p1.mass, com=p1.com, I=p1.I)
 
     assert p2.is_same(p1)
     assert p3.is_same(p1)

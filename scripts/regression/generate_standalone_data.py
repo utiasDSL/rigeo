@@ -97,7 +97,9 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
     velocities = xs[:, 3:]
     accelerations = np.array([f(t, x)[3:] for t, x in zip(t_eval, xs)])
     # wrenches = np.array([wrench(t) for t in t_eval])
-    wrenches = np.array([M @ A + rg.skew6(V) @ M @ V for V, A in zip(velocities, accelerations)])
+    wrenches = np.array(
+        [M @ A + rg.skew6(V) @ M @ V for V, A in zip(velocities, accelerations)]
+    )
 
     # apply noise to velocity
     vel_noise_raw = np.random.random(size=velocities.shape) - 0.5  # mean = 0, width = 1
@@ -174,7 +176,9 @@ def main():
             points = bounding_box.random_points(num_primitives)
             points = np.atleast_2d(points)
             vertices = rg.convex_hull(points)
-            params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+            params = rg.InertialParameters.from_point_masses(
+                masses=masses, points=points
+            )
         elif args.type == "boxes":
             # generate random boxes inside a larger one by defining each box
             # using two vertices
@@ -184,15 +188,9 @@ def main():
             all_params = []
             all_vertices = []
             for j in range(num_primitives):
-                box = rg.Box.from_two_vertices(
-                    points[j, 0, :], points[j, 1, :]
-                )
+                box = rg.Box.from_two_vertices(points[j, 0, :], points[j, 1, :])
                 all_vertices.append(box.vertices)
-                Ic = rg.cuboid_inertia_matrix(masses[j], box.half_extents)
-                Hc = rg.I2H(Ic)
-                params = rg.InertialParameters.translate_from_com(
-                    mass=masses[j], h=masses[j] * box.center, Hc=Hc
-                )
+                params = box.uniform_density_params(masses[j])
                 all_params.append(params)
             params = sum(all_params)
             vertices = rg.convex_hull(np.vstack(all_vertices))
