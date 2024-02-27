@@ -263,3 +263,29 @@ class FaceForm:
         poly = cdd.Polyhedron(Fmat)
         Smat = poly.get_generators()
         return SpanForm.from_cdd_matrix(Smat)
+
+
+def convex_hull(points, rcond=None):
+    """Get the vertices of the convex hull of a set of points.
+
+    Parameters
+    ----------
+    points : np.ndarray, shape (n, d)
+        A set of ``n`` points in ``d`` dimensions for which to compute the
+        convex hull. The points do *not* need to be full rank; that is, they
+        may span a lower-dimensional space than :math:`\\mathbb{R}^d`.
+    rcond : float, optional
+        Conditioning number used for internal routines.
+
+    Returns
+    -------
+    : np.ndarray, shape (m, d)
+        The vertices of the convex hull that fully contains the set of points.
+    """
+    assert points.ndim == 2
+    if points.shape[0] <= 1:
+        return points
+
+    # qhull does not handle degenerate sets of points but cdd does, which is
+    # nice
+    return SpanForm(points).canonical().vertices

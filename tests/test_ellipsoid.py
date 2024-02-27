@@ -12,13 +12,9 @@ def test_ellipsoid_sphere():
     assert ell.rank == 3
     assert not ell.is_degenerate()
 
-    ell2 = rg.Ellipsoid.from_affine(A=ell.affine_matrix, b=ell.affine_vector)
-    assert np.allclose(ell.Einv, ell2.Einv)
+    ell2 = rg.Ellipsoid.from_affine(A=ell.A, b=ell.b)
+    assert np.allclose(ell.S, ell2.S)
     assert np.allclose(ell.center, ell2.center)
-
-    ell3 = rg.Ellipsoid.from_Q(Q=ell.Q)
-    assert np.allclose(ell.Einv, ell3.Einv)
-    assert np.allclose(ell.center, ell3.center)
 
 
 def test_ellipsoid_hypersphere():
@@ -29,13 +25,9 @@ def test_ellipsoid_hypersphere():
     assert ell.rank == 4
     assert not ell.is_degenerate()
 
-    ell2 = rg.Ellipsoid.from_affine(A=ell.affine_matrix, b=ell.affine_vector)
-    assert np.allclose(ell.Einv, ell2.Einv)
+    ell2 = rg.Ellipsoid.from_affine(A=ell.A, b=ell.b)
+    assert np.allclose(ell.S, ell2.S)
     assert np.allclose(ell.center, ell2.center)
-
-    ell3 = rg.Ellipsoid.from_Q(Q=ell.Q)
-    assert np.allclose(ell.Einv, ell3.Einv)
-    assert np.allclose(ell.center, ell3.center)
 
 
 def test_ellipsoid_degenerate_contains():
@@ -116,24 +108,24 @@ def test_box_inscribed_ellipsoid():
 
     # translated
     box = rg.Box(half_extents, center=offset)
-    ell = rg.mie(box.vertices)
+    ell = box.as_poly().mie()
     assert ell.is_same(box.mie(), tol=1e-4)
 
     # rotated
     box = rg.Box(half_extents, rotation=C)
-    ell = rg.mie(box.vertices)
+    ell = box.as_poly().mie()
     assert ell.is_same(box.mie(), tol=1e-4)
 
     # translated + rotated
     box = rg.Box(half_extents, rotation=C, center=offset)
-    ell = rg.mie(box.vertices)
+    ell = box.as_poly().mie()
     assert ell.is_same(box.mie(), tol=1e-4)
 
 
 def test_inscribed_sphere():
     box = rg.Box(half_extents=[1, 2, 3])
     ell = box.mie(sphere=True)
-    assert np.allclose(ell.Einv, np.eye(3))
+    assert np.allclose(ell.S, np.eye(3))
 
 
 def test_inscribed_ellipsoid_4d():
@@ -141,25 +133,26 @@ def test_inscribed_ellipsoid_4d():
 
     dim = 4
     points = np.random.random((20, dim))
-    vertices = rg.convex_hull(points)
-    ell = rg.mie(vertices)
+    poly = rg.ConvexPolyhedron.from_vertices(points, prune=True)
+    ell = poly.mie()
 
     # check that all the vertices are on the border or outside of the
     # ellipsoid
-    for x in vertices:
-        assert (x - ell.center).T @ ell.Einv @ (x - ell.center) >= 1
+    for x in poly.vertices:
+        assert (x - ell.center).T @ ell.S @ (x - ell.center) >= 1
 
 
 def test_inscribed_ellipsoid_degenerate():
     vertices = np.array([[1, 1, 0], [-1, 1, 0], [-1, -1, 0], [1, -1, 0]])
-    ell = rg.mie(vertices)
+    poly = rg.ConvexPolyhedron.from_vertices(vertices)
+    ell = poly.mie()
     assert ell.rank == 2
 
     # check that all the vertices are on the border or outside of the
     # ellipsoid
     # TODO this does not work in the case of a degenerate ellipsoid!
     # for x in vertices:
-    #     assert (x - ell.center).T @ ell.Einv @ (x - ell.center) >= 1
+    #     assert (x - ell.center).T @ ell.S @ (x - ell.center) >= 1
 
 
 def test_must_contain():

@@ -38,6 +38,34 @@ def _box_vertices(half_extents, center, rotation):
     return (rotation @ v.T).T + center
 
 
+def _mie_inequality_form(A, b, sphere=False, solver=None):
+    """Compute the maximum inscribed ellipsoid for an inequality-form
+    polyhedron P = {x | Ax <= b}.
+
+    See :cite:t:`boyd2004convex`, Section 8.4.1.
+
+    Returns the ellipsoid.
+    """
+
+    dim = A.shape[1]
+    n = b.shape[0]
+
+    B = cp.Variable((dim, dim), PSD=True)
+    c = cp.Variable(dim)
+
+    objective = cp.Maximize(cp.log_det(B))
+    constraints = [cp.norm2(B @ A[i, :]) + A[i, :] @ c <= b[i] for i in range(n)]
+    if sphere:
+        # if we want a sphere, then A is a multiple of the identity matrix
+        r = cp.Variable(1)
+        constraints.append(B == r * np.eye(dim))
+    problem = cp.Problem(objective, constraints)
+    problem.solve(solver=solver)
+
+    E = B.value @ B.value
+    return Ellipsoid.from_shape_matrix(S=np.linalg.inv(E), center=c.value)
+
+
 class Shape(abc.ABC):
     @abc.abstractmethod
     def contains(self, points, tol=1e-8):
@@ -380,9 +408,42 @@ class ConvexPolyhedron(Shape):
         """Construct the minimum-volume bounding ellipsoid for this polyhedron."""
         return mbe_of_points(self.vertices, rcond=rcond, sphere=sphere, solver=solver)
 
+    # def mie(self, rcond=None, sphere=False, solver=None):
+    #     """Construct the maximum-volume ellipsoid inscribed in this polyhedron."""
+    #     return mie(self.vertices, rcond=rcond, sphere=sphere, solver=solver)
+
     def mie(self, rcond=None, sphere=False, solver=None):
-        """Construct the maximum-volume ellipsoid inscribed in this polyhedron."""
-        return mie(self.vertices, rcond=rcond, sphere=sphere, solver=solver)
+        """Compute the maximum inscribed ellipsoid for a polyhedron represented by
+        a set of vertices.
+
+        Returns the ellipsoid.
+        """
+        # rowspace
+        r = self.vertices[0]
+        R = orth((self.vertices - r).T, rcond=rcond)
+        rank = R.shape[1]
+
+        # project onto the rowspace
+        # this allows us to handle degenerate sets of points that live in a
+        # lower-dimensional subspace than R^d
+        P = (self.vertices - r) @ R
+
+        # solve the problem a possibly lower-dimensional space where the set of
+        # vertices is full-rank
+        face_form = SpanForm(P).to_face_form()
+        ell = _mie_inequality_form(
+            face_form.A, face_form.b, sphere=sphere, solver=solver
+        )
+
+        # unproject
+        half_extents = np.zeros(self.vertices.shape[1])
+        half_extents[:rank] = ell.half_extents
+
+        N = null_space(R.T, rcond=rcond)
+        rotation = np.hstack((R @ ell.rotation, N))
+
+        center = R @ ell.center + r
+        return Ellipsoid(half_extents=half_extents, rotation=rotation, center=center)
 
     def intersect(self, other):
         """Intersect this polyhedron with another one.
@@ -691,6 +752,15 @@ class Box(ConvexPolyhedron):
             half_extents=half_extents, center=self.center, rotation=self.rotation
         )
 
+    def as_poly(self):
+        """Convert the box to a general convex polyhedron.
+
+        Returns
+        -------
+        : ConvexPolyhedron
+        """
+        return ConvexPolyhedron.from_vertices(self.vertices)
+
     def can_realize(self, params, tol=0, solver=None):
         assert tol >= 0, "Numerical tolerance cannot be negative."
         if not params.consistent(tol=tol):
@@ -770,11 +840,13 @@ class Ellipsoid(Shape):
         return self.half_extents.shape[0]
 
     @property
-    def Einv(self):
+    def S(self):
+        """Shape matrix."""
         return self.rotation @ np.diag(self.half_extents_inv**2) @ self.rotation.T
 
     @property
     def E(self):
+        """Inverse of the shape matrix."""
         return self.rotation @ np.diag(self.half_extents**2) @ self.rotation.T
 
     @property
@@ -810,9 +882,9 @@ class Ellipsoid(Shape):
         return cls(half_extents=half_extents, center=center)
 
     @classmethod
-    def from_Einv(cls, Einv, center=None):
-        # we can use eigh since Einv is symmetric
-        eigs, rotation = np.linalg.eigh(Einv)
+    def from_shape_matrix(cls, S, center=None):
+        # we can use eigh since S is symmetric
+        eigs, rotation = np.linalg.eigh(S)
 
         half_extents_inv = np.sqrt(eigs)
         half_extents = _inv_with_zeros(half_extents_inv)
@@ -822,34 +894,26 @@ class Ellipsoid(Shape):
     @classmethod
     def from_affine(cls, A, b, rcond=None):
         """Construct an ellipsoid from an affine transformation of the unit ball."""
-        Einv = A @ A
+        S = A @ A
 
         # use least squares instead of direct solve in case we have a
         # degenerate ellipsoid
         center = np.linalg.lstsq(A, -b, rcond=rcond)[0]
-        return cls.from_Einv(Einv=Einv, center=center)
-
-    @classmethod
-    def from_Q(cls, Q):
-        assert Q.shape[0] == Q.shape[1]
-        dim = Q.shape[0] - 1
-        Einv = -Q[:dim, :dim]
-        q = Q[:dim, dim]
-        center = np.linalg.solve(Einv, q)
-        return cls.from_Einv(Einv=Einv, center=center)
+        return cls.from_shape_matrix(S=S, center=center)
 
     def lower(self):
         """Project onto a ``rank``-dimensional subspace."""
+        # TODO this needs to be finished and tested
+        # TODO do I even want this?
         if rank == dim:
             return self
         nz = np.nonzero(self.half_extents)
         half_extents = self.half_extents[nz]
         U = self.rotation[:, nz]
         center = U.T @ self.center
-        # TODO
 
     @property
-    def affine_matrix(self):
+    def A(self):
         """The matrix :math:`\\boldsymbol{A}` from when the ellipsoid is
         represented as an affine transformation of the unit ball.
 
@@ -860,14 +924,14 @@ class Ellipsoid(Shape):
         return self.rotation @ np.diag(self.half_extents_inv) @ self.rotation.T
 
     @property
-    def affine_vector(self):
+    def b(self):
         """The vector :math:`\\boldsymbol{b}` from when the ellipsoid is
         represented as an affine transformation of the unit ball.
 
         .. math::
            \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\|Ax+b\\|^2\\leq 1\\}
         """
-        return -self.affine_matrix @ self.center
+        return -self.A @ self.center
 
     @property
     def Q(self):
@@ -878,10 +942,10 @@ class Ellipsoid(Shape):
         """
 
         Q = np.zeros((self.dim + 1, self.dim + 1))
-        Q[: self.dim, : self.dim] = -self.Einv
-        Q[: self.dim, self.dim] = self.Einv @ self.center
+        Q[: self.dim, : self.dim] = -self.S
+        Q[: self.dim, self.dim] = self.S @ self.center
         Q[self.dim, : self.dim] = Q[: self.dim, self.dim]
-        Q[self.dim, self.dim] = 1 - self.center @ self.Einv @ self.center
+        Q[self.dim, self.dim] = 1 - self.center @ self.S @ self.center
         return Q
 
     def is_degenerate(self):
@@ -925,7 +989,7 @@ class Ellipsoid(Shape):
         """
         points = np.array(points)
         zero_mask = np.isclose(self.half_extents, 0)
-        Einv_diag = np.diag(self.half_extents_inv[~zero_mask] ** 2)
+        S_diag = np.diag(self.half_extents_inv[~zero_mask] ** 2)
 
         if points.ndim == 1:
             p = self.rotation.T @ (points - self.center)
@@ -934,7 +998,7 @@ class Ellipsoid(Shape):
             if not np.allclose(p[zero_mask], 0, rtol=0, atol=tol):
                 return False
 
-            return p[~zero_mask] @ Einv_diag @ p[~zero_mask] <= 1 + tol
+            return p[~zero_mask] @ S_diag @ p[~zero_mask] <= 1 + tol
         elif points.ndim == 2:
             ps = (points - self.center) @ self.rotation
 
@@ -943,11 +1007,8 @@ class Ellipsoid(Shape):
 
             # nondegenerate dimensions
             res2 = np.array(
-                [p[~zero_mask] @ Einv_diag @ p[~zero_mask] <= 1 + tol for p in ps]
+                [p[~zero_mask] @ S_diag @ p[~zero_mask] <= 1 + tol for p in ps]
             )
-
-            # import IPython
-            # IPython.embed()
 
             # combine them
             return np.logical_and(res1, res2)
@@ -1057,11 +1118,9 @@ class Ellipsoid(Shape):
         constraints = [
             t >= 0,
             schur(
-                self.Einv - t * other.affine_matrix,
-                self.affine_matrix @ self.affine_vector - t * self.affine_vector,
-                self.affine_vector @ self.affine_vector
-                - 1
-                - t * (other.affine_vector @ other.affine_vector - 1),
+                self.S - t * other.A,
+                self.A @ self.b - t * self.b,
+                self.b @ self.b - 1 - t * (other.b @ other.b - 1),
             )
             << 0,
         ]
@@ -1415,35 +1474,9 @@ class Capsule(Shape):
         return points.reshape(shape + (3,))
 
 
-def convex_hull(points, rcond=None):
-    """Get the vertices of the convex hull of a set of points.
-
-    Parameters
-    ----------
-    points : np.ndarray, shape (n, d)
-        A set of ``n`` points in ``d`` dimensions for which to compute the
-        convex hull. The points do *not* need to be full rank; that is, they
-        may span a lower-dimensional space than :math:`\\mathbb{R}^d`.
-    rcond : float, optional
-        Conditioning number used for internal routines.
-
-    Returns
-    -------
-    : np.ndarray, shape (m, d)
-        The vertices of the convex hull that fully contains the set of points.
-    """
-    assert points.ndim == 2
-    if points.shape[0] <= 1:
-        return points
-
-    # qhull does not handle degenerate sets of points but cdd does, which is
-    # nice
-    return SpanForm(points).canonical().vertices
-
-
-def _mbee_con_mat(Einv, d, Ai, bi, ti):
+def _mbee_con_mat(S, d, Ai, bi, ti):
     """Constraint matrix for minimum bounding ellipsoid of ellipsoids problem."""
-    dim = Einv.shape[0]
+    dim = S.shape[0]
     ci = bi @ bi - 1
     Z = np.zeros((dim, dim))
     f = cp.reshape(-1 - ti * ci, (1, 1))
@@ -1451,9 +1484,9 @@ def _mbee_con_mat(Einv, d, Ai, bi, ti):
     d = cp.reshape(d, (dim, 1))
     # fmt: off
     return cp.bmat([
-        [Einv - ti * Ai, e, Z],
+        [S - ti * Ai, e, Z],
         [e.T, f, d.T],
-        [Z, d, -Einv]])
+        [Z, d, -S]])
     # fmt: on
 
 
@@ -1464,7 +1497,7 @@ def mbe_of_ellipsoids(ellipsoids, sphere=False, solver=None):
 
     Parameters
     ----------
-    ellipsoids : iterable of Ellipsoids
+    ellipsoids : Iterable[Ellipsoid]
         The union of ellipsoids to bound.
     sphere : bool
         If ``True``, compute the minimum bounding *sphere*. Defaults to ``False``.
@@ -1479,24 +1512,23 @@ def mbe_of_ellipsoids(ellipsoids, sphere=False, solver=None):
     n = len(ellipsoids)
     dim = ellipsoids[0].dim
 
-    Einv = cp.Variable((dim, dim), PSD=True)  # = A^2
+    S = cp.Variable((dim, dim), PSD=True)  # = A^2
     d = cp.Variable(dim)  # = Ab
     ts = cp.Variable(n)
 
-    objective = cp.Minimize(-cp.log_det(Einv))
+    objective = cp.Minimize(-cp.log_det(S))
     constraints = [ts >= 0] + [
-        _mbee_con_mat(Einv, d, E.affine_matrix, E.affine_vector, ti) << 0
-        for E, ti in zip(ellipsoids, ts)
+        _mbee_con_mat(S, d, E.A, E.b, ti) << 0 for E, ti in zip(ellipsoids, ts)
     ]
     if sphere:
-        # if we want a sphere, then Einv is a multiple of the identity matrix
+        # if we want a sphere, then S is a multiple of the identity matrix
         a = cp.Variable(1)
-        constraints.append(Einv == a * np.eye(dim))
+        constraints.append(S == a * np.eye(dim))
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=solver)
 
-    center = np.linalg.solve(Einv.value, -d.value)
-    return Ellipsoid.from_Einv(Einv.value, center=center)
+    center = np.linalg.solve(S.value, -d.value)
+    return Ellipsoid.from_shape_matrix(S.value, center=center)
 
 
 def mbe_of_points(points, rcond=None, sphere=False, solver=None):
@@ -1553,65 +1585,4 @@ def mbe_of_points(points, rcond=None, sphere=False, solver=None):
     rotation = np.hstack((R @ V, N))
     center = R @ np.linalg.lstsq(A.value, -b.value, rcond=rcond)[0] + r
 
-    return Ellipsoid(half_extents=half_extents, rotation=rotation, center=center)
-
-
-def _mie_inequality_form(A, b, sphere=False, solver=None):
-    """Compute the maximum inscribed ellipsoid for an inequality-form
-    polyhedron P = {x | Ax <= b}.
-
-    See :cite:t:`boyd2004convex`, Section 8.4.1.
-
-    Returns the ellipsoid.
-    """
-
-    dim = A.shape[1]
-    n = b.shape[0]
-
-    B = cp.Variable((dim, dim), PSD=True)
-    c = cp.Variable(dim)
-
-    objective = cp.Maximize(cp.log_det(B))
-    constraints = [cp.norm2(B @ A[i, :]) + A[i, :] @ c <= b[i] for i in range(n)]
-    if sphere:
-        # if we want a sphere, then A is a multiple of the identity matrix
-        r = cp.Variable(1)
-        constraints.append(B == r * np.eye(dim))
-    problem = cp.Problem(objective, constraints)
-    problem.solve(solver=solver)
-
-    E = B.value @ B.value
-    return Ellipsoid.from_Einv(Einv=np.linalg.inv(E), center=c.value)
-
-
-# TODO just make a method of ConvexPolyhedron?
-def mie(vertices, rcond=None, sphere=False, solver=None):
-    """Compute the maximum inscribed ellipsoid for a polyhedron represented by
-    a set of vertices.
-
-    Returns the ellipsoid.
-    """
-    # rowspace
-    r = vertices[0]
-    R = orth((vertices - r).T, rcond=rcond)
-    rank = R.shape[1]
-
-    # project onto the rowspace
-    # this allows us to handle degenerate sets of points that live in a
-    # lower-dimensional subspace than R^d
-    P = (vertices - r) @ R
-
-    # solve the problem a possibly lower-dimensional space where the set of
-    # vertices is full-rank
-    face_form = SpanForm(P).to_face_form()
-    ell = _mie_inequality_form(face_form.A, face_form.b, sphere=sphere, solver=solver)
-
-    # unproject
-    half_extents = np.zeros(vertices.shape[1])
-    half_extents[:rank] = ell.half_extents
-
-    N = null_space(R.T, rcond=rcond)
-    rotation = np.hstack((R @ ell.rotation, N))
-
-    center = R @ ell.center + r
     return Ellipsoid(half_extents=half_extents, rotation=rotation, center=center)

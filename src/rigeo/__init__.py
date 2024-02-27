@@ -1,4 +1,4 @@
-from rigeo.polydd import SpanForm, FaceForm
+from rigeo.polydd import SpanForm, FaceForm, convex_hull
 from rigeo.closest import closest_points
 from rigeo.constraint import (
     schur,
