@@ -109,6 +109,7 @@ def pim_must_equal_param_var(param_var, eps):
 
     return J, [J == J.T, J >> eps * np.eye(4)]
 
+
 # TODO
 def pim_psd(J, ε=0):
     assert ε >= 0

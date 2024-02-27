@@ -52,6 +52,9 @@ def test_box_offset_from_origin_can_realize():
 def test_cube_must_realize_J():
     box = rg.Box(half_extents=[0.5, 0.5, 0.5])
 
+    # convert to a general convex polyhedron
+    poly = rg.ConvexPolyhedron.from_vertices(box.vertices)
+
     J = cp.Variable((4, 4), PSD=True)
     m = J[3, 3]
 
@@ -63,9 +66,17 @@ def test_cube_must_realize_J():
     problem.solve()
     assert np.isclose(objective.value, 0.5**2)
 
+    # objective should be the same if we use the general convex polyhedron
+    # formulation
+    constraints = poly.must_realize(J) + [m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.5**2)
+
 
 def test_cube_must_realize_vec():
     box = rg.Box(half_extents=[0.5, 0.5, 0.5])
+    poly = rg.ConvexPolyhedron.from_vertices(box.vertices)
 
     θ = cp.Variable(10)
     m = θ[0]
@@ -74,6 +85,13 @@ def test_cube_must_realize_vec():
 
     # need a mass constraint to bound the problem
     constraints = box.must_realize(θ) + [m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.5)
+
+    # objective should be the same if we use the general convex polyhedron
+    # formulation
+    constraints = poly.must_realize(θ) + [m <= 1]
     problem = cp.Problem(objective, constraints)
     problem.solve()
     assert np.isclose(objective.value, 0.5)

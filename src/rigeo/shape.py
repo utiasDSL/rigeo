@@ -405,6 +405,20 @@ class ConvexPolyhedron(Shape):
             return None
         return ConvexPolyhedron(span_form=span_form)
 
+    def _can_realize_tetrahedron(self, params, tol=0):
+        # center of mass must be inside the shape
+        if not self.contains(params.com, tol=tol):
+            return False
+
+        c = np.append(params.com, 1)
+        V = np.vstack((self.vertices.T, np.ones(4)))
+        ms = np.linalg.solve(V, params.mass * c)
+
+        Vs = np.array([np.outer(v, v) for v in self.vertices])
+        H_max = sum([m * V for m, V in zip(ms, Vs)])
+
+        return np.min(np.linalg.eigvals(H_max - params.H)) >= -tol
+
     def can_realize(self, params, tol=0, solver=None):
         assert (
             self.dim == 3
@@ -412,6 +426,11 @@ class ConvexPolyhedron(Shape):
         assert tol >= 0, "Numerical tolerance cannot be negative."
         if not params.consistent(tol=tol):
             return False
+
+        # special case for tetrahedra: this does not require solving an
+        # optimization problem
+        if self.nv == 4:
+            return self._can_realize_tetrahedron(params, tol=tol)
 
         Vs = np.array([np.outer(v, v) for v in self.vertices])
         ms = cp.Variable(self.nv)
@@ -421,10 +440,10 @@ class ConvexPolyhedron(Shape):
             ms >= 0,
             params.mass == cp.sum(ms),
             params.h == ms.T @ self.vertices,
-            params.H << cp.sum([μ * V for μ, V in zip(ms, V)]),
+            params.H << cp.sum([μ * V for μ, V in zip(ms, Vs)]),
         ]
         problem = cp.Problem(objective, constraints)
-        problem.solver(solver=solver)
+        problem.solve(solver=solver)
         return problem.status == "optimal"
 
     def must_realize(self, param_var, eps=0):
@@ -443,7 +462,7 @@ class ConvexPolyhedron(Shape):
             ms >= 0,
             m == cp.sum(ms),
             h == ms.T @ self.vertices,
-            H << cp.sum([μ * V for μ, V in zip(ms, V)]),
+            H << cp.sum([μ * V for μ, V in zip(ms, Vs)]),
         ]
 
     def transform(self, rotation=None, translation=None):
@@ -478,6 +497,32 @@ class ConvexPolyhedron(Shape):
         assert np.all(masses >= 0)
 
         return InertialParameters.from_point_masses(masses=masses, points=self.vertices)
+
+
+def Simplex(extents):
+    """A :math:`d`-dimensional simplex.
+
+    The simplex has :math:`d+1` vertices: :math:`\\boldsymbol{v}_0 =
+    \\boldsymbol{0}`, :math:`\\boldsymbol{v}_1 = (e_1, 0, 0,\\dots)`,
+    :math:`\\boldsymbol{v}_2 = (0, e_2, 0,\\dots)`, etc., where :math:`e_i`
+    corresponds to ``extents[i]``.
+
+    Parameters
+    ----------
+    extents : np.ndarray, shape (d,)
+        The extents of the simplex.
+
+    Returns
+    -------
+    : ConvexPolyhedron
+        The simplex.
+    """
+    extents = np.array(extents)
+    assert np.all(extents > 0), "Simplex extents must be positive."
+
+    dim = extents.shape[0]
+    vertices = np.vstack((np.zeros(dim), np.diag(extents)))
+    return ConvexPolyhedron.from_vertices(vertices)
 
 
 class Box(ConvexPolyhedron):
