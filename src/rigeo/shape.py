@@ -855,11 +855,11 @@ class Ellipsoid(Shape):
     def is_infinite(self):
         return np.any(np.isinf(self.half_extents))
 
-    def is_same(self, other):
+    def is_same(self, other, tol=1e-8):
         """Check if this ellipsoid is the same as another."""
         if not isinstance(other, self.__class__):
             return False
-        return np.allclose(self.Q, other.Q)
+        return np.allclose(self.Q, other.Q, atol=tol)
 
     def contains(self, points, tol=1e-8):
         """Check if points are contained in the ellipsoid.
@@ -1375,16 +1375,17 @@ def convex_hull(points, rcond=None):
 
     Parameters
     ----------
-    points :
-        A :math:`n\\times d` array of points, where :math:`n` is the number of
-        points and `d` is the dimension. Note that the points must be full rank
-        (i.e., they must span :math:`\\mathbb{R}^d`.
+    points : np.ndarray, shape (n, d)
+        A set of ``n`` points in ``d`` dimensions for which to compute the
+        convex hull. The points do *not* need to be full rank; that is, they
+        may span a lower-dimensional space than :math:`\\mathbb{R}^d`.
+    rcond : float, optional
+        Conditioning number used for internal routines.
 
     Returns
     -------
-    :
-        The :math:`m\\times d` array of vertices of the convex hull that fully
-        contains the set of points.
+    : np.ndarray, shape (m, d)
+        The vertices of the convex hull that fully contains the set of points.
     """
     assert points.ndim == 2
     if points.shape[0] <= 1:
@@ -1412,15 +1413,16 @@ def _mbee_con_mat(Einv, d, Ai, bi, ti):
 
 
 def mbe_of_ellipsoids(ellipsoids, sphere=False, solver=None):
-    """Minimum-volume bounding ellipsoid of a union of ellipsoids.
+    """Compute the minimum-volume bounding ellipsoid for a set of ellipsoids.
+
+    See :cite:t:`boyd2004convex`, Section 8.4.1.
 
     Parameters
     ----------
     ellipsoids : iterable of Ellipsoids
         The union of ellipsoids to bound.
     sphere : bool
-        ``True`` to force the bounding ellipsoid to be a sphere, ``False`` for
-        a general ellipsoid.
+        If ``True``, compute the minimum bounding *sphere*. Defaults to ``False``.
     solver : str or None
         The solver for cvxpy to use.
 
@@ -1448,20 +1450,30 @@ def mbe_of_ellipsoids(ellipsoids, sphere=False, solver=None):
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=solver)
 
-    # TODO want to get rid of from_affine method
-    # A = sqrtm(Einv.value)
-    # b = np.linalg.solve(A, d.value)
     center = np.linalg.solve(Einv.value, -d.value)
-    # return Ellipsoid.from_affine(A=A, b=b)
     return Ellipsoid.from_Einv(Einv.value, center=center)
 
 
 def mbe_of_points(points, rcond=None, sphere=False, solver=None):
-    """Compute the minimum bounding ellipsoid for a set of points.
+    """Compute the minimum-volume bounding ellipsoid for a set of points.
 
-    See Convex Optimization by Boyd & Vandenberghe, sec. 8.4.1.
+    See :cite:t:`boyd2004convex`, Section 8.4.1.
 
-    Returns the ellipsoid.
+    Parameters
+    ----------
+    points : np.ndarray, shape (n, d)
+        The points to bound. There are ``n`` points in ``d`` dimensions.
+    rcond : float, optional
+        Conditioning number used for internal routines.
+    sphere : bool
+        If ``True``, compute the minimum bounding *sphere*. Defaults to ``False``.
+    solver : str or None,
+        The solver for cvxpy to use.
+
+    Returns
+    -------
+    : Ellipsoid
+        The minimum-volume bounding ellipsoid.
     """
     # rowspace
     r = points[0]
@@ -1486,6 +1498,7 @@ def mbe_of_points(points, rcond=None, sphere=False, solver=None):
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=solver)
 
+    # unproject
     eigs, V = np.linalg.eigh(A.value)
     half_extents = np.zeros(points.shape[1])
     nz = np.nonzero(eigs)
@@ -1502,7 +1515,7 @@ def _mie_inequality_form(A, b, sphere=False, solver=None):
     """Compute the maximum inscribed ellipsoid for an inequality-form
     polyhedron P = {x | Ax <= b}.
 
-    See Convex Optimization by Boyd & Vandenberghe, sec. 8.4.2.
+    See :cite:t:`boyd2004convex`, Section 8.4.1.
 
     Returns the ellipsoid.
     """
@@ -1526,6 +1539,7 @@ def _mie_inequality_form(A, b, sphere=False, solver=None):
     return Ellipsoid.from_Einv(Einv=np.linalg.inv(E), center=c.value)
 
 
+# TODO just make a method of ConvexPolyhedron?
 def mie(vertices, rcond=None, sphere=False, solver=None):
     """Compute the maximum inscribed ellipsoid for a polyhedron represented by
     a set of vertices.
@@ -1533,27 +1547,26 @@ def mie(vertices, rcond=None, sphere=False, solver=None):
     Returns the ellipsoid.
     """
     # rowspace
-    R = orth(vertices.T, rcond=rcond)
+    r = vertices[0]
+    R = orth((vertices - r).T, rcond=rcond)
+    rank = R.shape[1]
 
     # project onto the rowspace
     # this allows us to handle degenerate sets of points that live in a
     # lower-dimensional subspace than R^d
-    P = vertices @ R
+    P = (vertices - r) @ R
 
     # solve the problem a possibly lower-dimensional space where the set of
     # vertices is full-rank
     face_form = SpanForm(P).to_face_form()
     ell = _mie_inequality_form(face_form.A, face_form.b, sphere=sphere, solver=solver)
 
-    rank = R.shape[1]
+    # unproject
     half_extents = np.zeros(vertices.shape[1])
     half_extents[:rank] = ell.half_extents
 
     N = null_space(R.T, rcond=rcond)
-    rotation = R @ ell.rotation @ R.T + N @ N.T
-    # center = R @ np.linalg.lstsq(A.value, -b.value, rcond=rcond)[0]
+    rotation = np.hstack((R @ ell.rotation, N))
 
-    # unproject back into the original space
-    # Einv = R @ ell.Einv @ R.T
-    center = R @ ell.center
+    center = R @ ell.center + r
     return Ellipsoid(half_extents=half_extents, rotation=rotation, center=center)

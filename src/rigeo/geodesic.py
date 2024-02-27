@@ -3,7 +3,7 @@ import numpy as np
 
 def positive_definite_distance(A, B):
     """Geodesic distance between two symmetric positive definite matrices
-    :math:`A` and :math:`B`.
+    :math:`\\boldsymbol{A}` and :math:`\\boldsymbol{B}`.
 
     This metric is coordinate-frame invariant. See :cite:t:`lee2019geometric`.
     for more details.
@@ -18,7 +18,7 @@ def positive_definite_distance(A, B):
     Returns
     -------
     : float, non-negative
-        The geodesic distance between :math:`A` and :math:`B`.
+        The geodesic distance between :math:`\\boldsymbol{A}` and :math:`\\boldsymbol{B}`.
     """
     assert A.shape == B.shape, "Matrices must have the same shape."
     C = np.linalg.solve(A, B)

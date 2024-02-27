@@ -50,28 +50,27 @@ def test_ellipsoid_degenerate_contains():
     assert np.all(ell_inf.contains([[0.5, 0.5, 0], [0.5, 0.5, 10]]))
 
 
-def test_cube_bounding_ellipsoid_translated():
-    h = 0.5
-    offset = np.array([1, 1, 0])
-
+def test_box_bounding_ellipsoid():
     # MBE for box and for general set of points are implemented differently, so
     # it is worth testing them against each other
-    box = rg.Box.cube(h, center=offset)
-    ell = rg.mbe_of_points(box.vertices)
-    elld = box.mbe()
-    assert ell.is_same(elld)
-
-
-def test_cube_bounding_ellipsoid_rotated():
-    h = 0.5
+    half_extents = [0.5, 1, 2]
+    offset = np.array([1, 1, 0])
     C = rotx(np.pi / 2) @ roty(np.pi / 4)
 
-    box = rg.Box.cube(h)
-    points = (C @ box.vertices.T).T
+    # translated
+    box = rg.Box(half_extents, center=offset)
+    ell = rg.mbe_of_points(box.vertices)
+    assert ell.is_same(box.mbe(), tol=1e-4)
 
-    ell = rg.mbe_of_points(points)
-    elld = box.mbe().transform(rotation=C)
-    assert ell.is_same(elld)
+    # rotated
+    box = rg.Box(half_extents, rotation=C)
+    ell = rg.mbe_of_points(box.vertices)
+    assert ell.is_same(box.mbe(), tol=1e-4)
+
+    # translated + rotated
+    box = rg.Box(half_extents, rotation=C, center=offset)
+    ell = rg.mbe_of_points(box.vertices)
+    assert ell.is_same(box.mbe(), tol=1e-4)
 
 
 def test_bounding_ellipsoid_4d():
@@ -85,6 +84,7 @@ def test_bounding_ellipsoid_4d():
 
 
 def test_bounding_ellipsoid_degenerate():
+    # 1D line segment
     points = np.array([[1.0, 0.5, 0], [0, 0.5, 0]])
     ell = rg.mbe_of_points(points)
     assert ell.rank == 1
@@ -96,13 +96,38 @@ def test_bounding_ellipsoid_degenerate():
         ell.contains([[1.1, 0.5, 0], [-0.1, 0.5, 0], [0, 0.6, 0], [0, 0, 0.1]])
     )
 
+    # 2D plane
+    points = np.array([[1., 0, 1], [1, 1, 1], [0, 1, 0], [0, 0, 0]])
+    ell = rg.mbe_of_points(points)
+    assert ell.rank == 2
+    assert ell.is_degenerate()
+    assert np.all(ell.contains(points))
 
-def test_cube_inscribed_ellipsoid():
-    h = 0.5
-    box = rg.Box.cube(h)
+    assert np.allclose(ell.center, [0.5, 0.5, 0.5])
+    assert not np.any(ell.contains([[0.45, 0.5, 0.55], [0.55, 0.5, 0.45]]))
+
+
+def test_box_inscribed_ellipsoid():
+    # MIE for box and for general set of points are implemented differently, so
+    # it is worth testing them against each other
+    half_extents = [0.5, 1, 2]
+    offset = np.array([1, 1, 0])
+    C = rotx(np.pi / 2) @ roty(np.pi / 4)
+
+    # translated
+    box = rg.Box(half_extents, center=offset)
     ell = rg.mie(box.vertices)
-    elld = box.mie()
-    assert ell.is_same(elld)
+    assert ell.is_same(box.mie(), tol=1e-4)
+
+    # rotated
+    box = rg.Box(half_extents, rotation=C)
+    ell = rg.mie(box.vertices)
+    assert ell.is_same(box.mie(), tol=1e-4)
+
+    # translated + rotated
+    box = rg.Box(half_extents, rotation=C, center=offset)
+    ell = rg.mie(box.vertices)
+    assert ell.is_same(box.mie(), tol=1e-4)
 
 
 def test_inscribed_sphere():
@@ -137,7 +162,7 @@ def test_inscribed_ellipsoid_degenerate():
     #     assert (x - ell.center).T @ ell.Einv @ (x - ell.center) >= 1
 
 
-def test_ellipsoid_must_contain():
+def test_must_contain():
     ell = rg.Ellipsoid.sphere(radius=1)
 
     point = cp.Variable(3)
@@ -169,7 +194,7 @@ def test_ellipsoid_must_contain():
 
 
 # TODO test with rotations
-def test_ellipsoid_must_contain_degenerate():
+def test_must_contain_degenerate():
     # zero half extent
     ell = rg.Ellipsoid(half_extents=[0.5, 0.5, 0])
 
@@ -186,6 +211,7 @@ def test_ellipsoid_must_contain_degenerate():
     problem = cp.Problem(objective, constraints)
     problem.solve()
     assert np.isclose(objective.value, 0.0, rtol=0, atol=1e-7)
+
 
     # with scale
     h = cp.Variable(3)
@@ -216,7 +242,60 @@ def test_ellipsoid_must_contain_degenerate():
     assert problem.status == "unbounded"
 
 
-def test_ellipsoid_random_points():
+def test_must_contain_degenerate_rotated():
+    # zero half extent
+    C = roty(np.pi / 4)
+    ell = rg.Ellipsoid(half_extents=[0.5, 0.5, 0], rotation=C)
+
+    point = cp.Variable(3)
+
+    # max y is unaffected
+    objective = cp.Maximize(point[1])
+    constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.5)
+
+    # max x is reduced
+    objective = cp.Maximize(point[0])
+    constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.25 * np.sqrt(2))
+
+    # max z is not zero anymore: it is same as x
+    objective = cp.Maximize(point[2])
+    constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.25 * np.sqrt(2))
+
+    # infinite half extent
+    ell = rg.Ellipsoid(half_extents=[0.5, 0.5, np.inf], rotation=C)
+
+    # max y is unaffected
+    objective = cp.Maximize(point[1])
+    constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.5)
+
+    # max x is infinite
+    objective = cp.Maximize(point[0])
+    constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert problem.status == "unbounded"
+
+    # max z is also infinite
+    objective = cp.Maximize(point[2])
+    constraints = ell.must_contain(point)
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert problem.status == "unbounded"
+
+
+def test_random_points():
     np.random.seed(0)
 
     ell = rg.Ellipsoid(half_extents=[2, 1, 0.5], center=[1, 0, 1])
