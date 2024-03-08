@@ -1,6 +1,7 @@
 import numpy as np
 import cvxpy as cp
 from spatialmath.base import roty
+import pinocchio
 
 import rigeo as rg
 
@@ -90,3 +91,27 @@ def test_transform():
     for s1, s2 in zip(body1.shapes, body2.shapes):
         assert s1.transform(rotation=C, translation=r).is_same(s2)
     assert body1.params.transform(rotation=C, translation=r).is_same(body2.params)
+
+
+def _pinocchio_regressor(V, A):
+    # pinocchio orders the inertia matrix parameters with I_xz and I_yy swapped
+    # compared to our implementation, so we have to manually correct that
+    Y = pinocchio.bodyRegressor(pinocchio.Motion(V), pinocchio.Motion(A))
+    Y_swapped = Y.copy()
+    Y_swapped[:, 6] = Y[:, 7]
+    Y_swapped[:, 7] = Y[:, 6]
+    return Y_swapped
+
+
+def test_regressor():
+    """Test body regressor implementation."""
+    np.random.seed(0)
+
+    V = 2 * np.random.random(6) - 1
+    A = 2 * np.random.random(6) - 1
+
+    # compare to pinocchio's implementation
+    Y = rg.RigidBody.regressor(V, A)
+    Y_expected = _pinocchio_regressor(V, A)
+
+    assert np.allclose(Y, Y_expected)

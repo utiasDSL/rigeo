@@ -19,14 +19,24 @@ def I2H(I):
 class InertialParameters:
     """Inertial parameters of a rigid body.
 
+    Exactly one of ``h`` and ``com`` must be specified. Exactly one of ``H``
+    and ``I`` must be specified.
+
     Parameters
     ----------
     mass : float
         Mass of the body.
-    h : np.ndarry, shape (3,)
+    h : np.ndarray, shape (3,)
         First moment of mass.
+    com : np.ndarray, shape (3,)
+        Center of mass.
     H : np.ndarray, shape (3, 3)
         Second moment matrix.
+    I : np.ndarray, shape (3, 3)
+        Inertia matrix.
+    translate_from_com : bool
+        If ``True``, ``I``/``H`` will assumed to be about the center of mass,
+        and will be translated accordingly to the origin.
     """
 
     def __init__(self, mass, h=None, com=None, H=None, I=None, translate_from_com=False):
@@ -174,7 +184,7 @@ class InertialParameters:
         """
         mass = 0.1 + np.random.random() * 0.9
         com = np.random.random(3) - 0.5
-        H = random_psd_matrix((3, 3)) + mass * np.outer(com, com)
+        H = random_psd_matrix(3) + mass * np.outer(com, com)
         return cls(mass=mass, com=com, H=H)
 
     def is_same(self, other):

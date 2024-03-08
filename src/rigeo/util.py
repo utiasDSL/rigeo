@@ -2,19 +2,52 @@ from pathlib import Path
 import numpy as np
 
 
-def vech(J):
-    """Half-vectorize the inertia matrix"""
-    return np.array([J[0, 0], J[0, 1], J[0, 2], J[1, 1], J[1, 2], J[2, 2]])
+def vech(A):
+    """Half-vectorize a matrix.
+
+    This extracts a flattened (vector) representation of the upper triangular
+    part of the matrix.
+
+    Parameters
+    ----------
+    A : np.ndarray, shape (n, n)
+        The matrix to half-vectorize.
+
+    Returns
+    -------
+    : np.ndarray, shape (n * (n + 1) / 2,)
+        The vector of upper triangular values.
+    """
+    n, m = A.shape
+    assert n == m
+    idx = np.triu_indices(n)
+    return A[idx]
 
 
 def skew3(v):
-    """Form a skew-symmetric matrix out of 3-dimensional vector v."""
+    """Form a skew-symmetric matrix from a 3-vector.
+
+    This is such that ``skew3(a) @ b == cross(a, b)``, where ``cross`` is the
+    cross product.
+
+    Parameters
+    ----------
+    v : np.ndarray, shape (3,)
+        The vector to make skew-symmetric.
+
+    Returns
+    -------
+    : np.ndarray, shape (3, 3)
+        The skew-symmetric matrix corresponding to ``v``.
+    """
+    assert v.shape == (3,)
     x, y, z = v
     return np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
 
 
 def skew6(V):
     """6D cross product matrix"""
+    assert V.shape == (6,)
     v, ω = V[:3], V[3:]
     Sv = skew3(v)
     Sω = skew3(ω)
@@ -22,24 +55,30 @@ def skew6(V):
 
 
 def lift3(x):
-    """Lift a 3-vector x such that A @ x = lift(x) @ vech(A) for symmetric A."""
+    """Lift a 3-vector x such that A @ x = lift3(x) @ vech(A) for symmetric A."""
+    assert x.shape == (3,)
     # fmt: off
     return np.array([
-        [x[0], x[1], x[2], 0, 0, 0],
-        [0, x[0], 0, x[1], x[2], 0],
-        [0, 0, x[0], 0, x[1], x[2]]
+        [x[0], x[1], x[2],    0,    0,    0],
+        [   0, x[0],    0, x[1], x[2],    0],
+        [   0,    0, x[0],    0, x[1], x[2]]
     ])
     # fmt: on
 
 
 def lift6(x):
-    """Lift a 6-vector V such that A @ V = lift(V) @ vech(A) for symmetric A."""
+    """Lift a twist V such that M @ V = lift6(V) @ θ.
+
+    M is the spatial mass matrix and θ is the corresponding inertial parameter
+    vector.
+    """
+    assert x.shape == (6,)
     a = x[:3]
     b = x[3:]
     # fmt: off
     return np.block([
-        [a[:, None], skew3(b), np.zeros((3, 6))],
-        [np.zeros((3, 1)), -skew3(a), lift3(b)]])
+        [      a[:, None],  skew3(b), np.zeros((3, 6))],
+        [np.zeros((3, 1)), -skew3(a),         lift3(b)]])
     # fmt: on
 
 
