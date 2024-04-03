@@ -33,61 +33,61 @@ SEED = 1
 VISUALIZE = False
 
 
-class IPIDProblem:
-    """Inertial parameter identification optimization problem.
-
-    Parameters
-    ----------
-    Ys : ndarray, shape (n, model.nv, nb * 10)
-        Regressor matrices, one for each of the ``n`` measurements.
-    τs : ndarray, shape (n, model.nv)
-        Measured joint torques.
-    reg_params : InertialParameters
-        Nominal inertial parameters to use as a regularizer.
-    reg_coeff : float
-        Coefficient for the regularization term.
-    """
-
-    def __init__(self, Ys, τs, reg_params, reg_coeff=1e-3):
-        self.no = τs.shape[0]  # number of measurements
-        self.nb = len(reg_params)  # number of bodies
-
-        self.A = np.vstack(Ys)
-        self.b = np.concatenate(τs)
-
-        self.J0s = [p.J for p in reg_params]
-        self.reg_coeff = reg_coeff
-
-    def solve(self, shapes=None, name=None):
-        θs = [cp.Variable(10) for _ in range(self.nb)]
-        Js = [rg.pim_must_equal_vec(θ) for θ in θs]
-
-        # regularizer is the entropic distance proposed by (Lee et al., 2020)
-        regularizer = entropic_regularizer(Js, self.J0s)
-
-        # psd_wrap fixes an occasional internal scipy error
-        # https://github.com/cvxpy/cvxpy/issues/1421#issuecomment-865977139
-        θ = cp.hstack(θs)
-        W = cp.psd_wrap(np.eye(self.b.shape[0]))
-        objective = cp.Minimize(
-            0.5 / self.no * cp.quad_form(self.A @ θ - self.b, W)
-            + self.reg_coeff * regularizer
-        )
-
-        # density realizability constraints
-        constraints = [c for J in Js for c in rg.pim_psd(J, PIM_EPS)]
-        if shapes is not None:
-            for shape, J in zip(shapes, Js):
-                constraints.extend(shape.must_realize(J))
-
-        problem = cp.Problem(objective, constraints)
-        problem.solve(warm_start=False, solver=cp.MOSEK)
-        assert problem.status == "optimal"
-        if name is not None:
-            print(f"{name} iters = {problem.solver_stats.num_iters}")
-            print(f"{name} solve time = {problem.solver_stats.solve_time}")
-            print(f"{name} value = {problem.value}")
-        return [rg.InertialParameters.from_vector(θ.value) for θ in θs]
+# class IPIDProblem:
+#     """Inertial parameter identification optimization problem.
+#
+#     Parameters
+#     ----------
+#     Ys : ndarray, shape (n, model.nv, nb * 10)
+#         Regressor matrices, one for each of the ``n`` measurements.
+#     τs : ndarray, shape (n, model.nv)
+#         Measured joint torques.
+#     reg_params : InertialParameters
+#         Nominal inertial parameters to use as a regularizer.
+#     reg_coeff : float
+#         Coefficient for the regularization term.
+#     """
+#
+#     def __init__(self, Ys, τs, reg_params, reg_coeff=1e-3):
+#         self.no = τs.shape[0]  # number of measurements
+#         self.nb = len(reg_params)  # number of bodies
+#
+#         self.A = np.vstack(Ys)
+#         self.b = np.concatenate(τs)
+#
+#         self.J0s = [p.J for p in reg_params]
+#         self.reg_coeff = reg_coeff
+#
+#     def solve(self, shapes=None, name=None):
+#         θs = [cp.Variable(10) for _ in range(self.nb)]
+#         Js = [rg.pim_must_equal_vec(θ) for θ in θs]
+#
+#         # regularizer is the entropic distance proposed by (Lee et al., 2020)
+#         regularizer = entropic_regularizer(Js, self.J0s)
+#
+#         # psd_wrap fixes an occasional internal scipy error
+#         # https://github.com/cvxpy/cvxpy/issues/1421#issuecomment-865977139
+#         θ = cp.hstack(θs)
+#         W = cp.psd_wrap(np.eye(self.b.shape[0]))
+#         objective = cp.Minimize(
+#             0.5 / self.no * cp.quad_form(self.A @ θ - self.b, W)
+#             + self.reg_coeff * regularizer
+#         )
+#
+#         # density realizability constraints
+#         constraints = [c for J in Js for c in rg.pim_psd(J, PIM_EPS)]
+#         if shapes is not None:
+#             for shape, J in zip(shapes, Js):
+#                 constraints.extend(shape.must_realize(J))
+#
+#         problem = cp.Problem(objective, constraints)
+#         problem.solve(warm_start=False, solver=cp.MOSEK)
+#         assert problem.status == "optimal"
+#         if name is not None:
+#             print(f"{name} iters = {problem.solver_stats.num_iters}")
+#             print(f"{name} solve time = {problem.solver_stats.solve_time}")
+#             print(f"{name} value = {problem.value}")
+#         return [rg.InertialParameters.from_vector(θ.value) for θ in θs]
 
 
 def sinusoidal_trajectory(t):

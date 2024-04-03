@@ -80,6 +80,7 @@ def _pim_sum_vec_matrices():
     return As
 
 
+# TODO not sure I totally like the semantics of this
 def pim_must_equal_vec(θ):
     """Generate a cvxpy expression that converts a parameter vector to
     pseudo-inertia matrix.

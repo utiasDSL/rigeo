@@ -179,7 +179,7 @@ class RigidBody:
         V : np.ndarray, shape (6,)
             Body-frame velocity.
         A : np.ndarray, shape (6,)
-            Body-frame acceleration.
+            Body-frame spatial acceleration.
 
         Returns
         -------
