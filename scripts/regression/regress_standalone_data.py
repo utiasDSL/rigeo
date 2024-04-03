@@ -29,6 +29,7 @@ TRAIN_WITH_PLANAR_ONLY = False
 
 # use the overall bounding box rather than tight convex hull of the body's
 # shape
+# TODO this makes things worse
 USE_BOUNDING_BOX = False
 
 REGULARIZATION_COEFF = 0
@@ -122,7 +123,7 @@ def main():
         n = Vs.shape[0]
         n_train = int(TRAIN_TEST_SPLIT * n)
         # n_train = 1
-        cov = np.eye(6)  # TODO?
+        # cov = np.eye(6)  # TODO?
 
         # regression/training data
         if TRAIN_WITH_PLANAR_ONLY:
@@ -144,7 +145,7 @@ def main():
 
         # test/validation data
         # TODO not sure if we should use the noisy or noiseless data for
-        # testing
+        # testing -- noiseless is basically ground-truth
         Vs_test = Vs[n_train:]
         As_test = As[n_train:]
         Ys_test = np.array(
