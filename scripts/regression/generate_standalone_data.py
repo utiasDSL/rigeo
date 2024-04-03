@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Generate simulated data for random polyhedral rigid bodies."""
 import argparse
 from pathlib import Path
@@ -16,15 +17,19 @@ import rigeo as rg
 import IPython
 
 
-NUM_OBJ = 50
+NUM_OBJ = 10
 NUM_PRIMITIVE_BOUNDS = [10, 25]
 BOUNDING_BOX_HALF_EXTENTS = [0.5, 0.5, 0.5]
 # OFFSET = np.array([0.2, 0, 0])
 OFFSET = np.array([0, 0, 0])
 MASS = 1.0  # TODO vary as well?
 
-VEL_NOISE_WIDTH = 0.1
+# noise
+VEL_NOISE_WIDTH = 0.05
 VEL_NOISE_BIAS = 0.1
+
+WRENCH_NOISE_WIDTH = 0
+WRENCH_NOISE_BIAS = 0
 
 
 # TODO it would be cool have a Rotation class with a Jacobian method
@@ -45,10 +50,27 @@ def SO3_jacobian(axis_angle, eps=1e-4):
     return J
 
 
-def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False):
+def generate_trajectory_old(params, duration=2 * np.pi, eval_step=0.1, planar=False):
+    """Generate a random trajectory for a rigid body.
+
+    Parameters
+    ----------
+    params : ip.InertialParameters
+        The inertial parameters of the body.
+    duration : float, positive
+        The duration of the trajectory.
+    eval_step : float, positive
+        Interval at which to sample the trajectory.
+    planar : bool
+        Set to ``True`` to restrict the body to planar motion.
+
+    Returns
+    -------
+    """
     M = params.M
 
     def wrench(t):
+        """Body-frame wrench applied to the rigid body."""
         return np.array(
             [
                 np.sin(t),
@@ -87,6 +109,9 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
     # integrate the trajectory
     n, t_eval = rg.compute_evaluation_times(duration=duration, step=eval_step)
     res = solve_ivp(fun=f, t_span=[0, duration], y0=np.zeros(9), t_eval=t_eval)
+    if planar:
+        import IPython
+        IPython.embed()
     assert np.allclose(res.t, t_eval)
 
     xs = res.y.T
@@ -136,6 +161,132 @@ def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False)
     }
 
 
+def transform_wrench_from_com(w, c):
+    f, τ = w[:3], w[3:]
+    return np.concatenate((f, τ + np.cross(c, f)))
+
+
+def transform_twist_to_com(V, c):
+    v, ω = V[:3], V[3:]
+    return np.concatenate((v - np.cross(c, ω), ω))
+
+
+def planar_M(M):
+    M_planar = np.zeros((3, 3))
+    M_planar[:2, :2] = M[:2, :2]
+    M_planar[:2, 2] = M[:2, 5]
+    M_planar[2, :2] = M[5, :2]
+    M_planar[2, 2] = M[5, 5]
+    return M_planar
+
+
+def generate_trajectory(params, duration=2 * np.pi, eval_step=0.1, planar=False):
+    """Generate a random trajectory for a rigid body.
+
+    Parameters
+    ----------
+    params : rg.InertialParameters
+        The inertial parameters of the body.
+    duration : float, positive
+        The duration of the trajectory.
+    eval_step : float, positive
+        Interval at which to sample the trajectory.
+    planar : bool
+        Set to ``True`` to restrict the body to planar motion.
+
+    Returns
+    -------
+    """
+    M = params.M.copy()
+    c = params.com
+
+    # TODO
+    # M_planar = M.copy()
+    # M_planar[:, 2:5] = 0
+    # M_planar[2:5, 0] = 0
+    # M2 = planar_M(M)
+
+    def wrench(t):
+        """Body-frame wrench applied to the rigid body."""
+        w = np.array(
+            [
+                np.sin(t),
+                np.sin(t + np.pi / 3),
+                np.sin(t + 2 * np.pi / 3),
+                np.sin(t + np.pi),
+                np.sin(t + 4 * np.pi / 3),
+                np.sin(t + 5 * np.pi / 3),
+            ]
+        )
+        return w
+
+    def f(t, V):
+        """Evaluate acceleration at time t given velocity V."""
+        # solve Newton-Euler for acceleration
+        # TODO this is currently failing in the planar case
+        # w = transform_wrench_from_com(w=wrench(t), c=c)
+        w = wrench(t)
+        A = np.linalg.solve(M, w - rg.skew6(V) @ M @ V)
+        # if planar:
+        #     # planar means no linear motion in z, no angular in x and y
+        #     A[2:5] = 0
+        #     # A[2] = 0
+        # print(V)
+        # if planar:
+        #     r = (w - rg.skew6(V) @ M_planar @ V)[2:5]
+        #     A_planar = np.linalg.solve(M2, r)
+        #     print(A_planar)
+        #     A = np.zeros(6)
+        #     A[:2] = A_planar[:2]
+        #     A[5] = A_planar[2]
+        return A
+
+    # integrate the trajectory
+    n, t_eval = rg.compute_evaluation_times(duration=duration, step=eval_step)
+    V0 = np.zeros(6)
+    res = solve_ivp(fun=f, t_span=[0, duration], y0=V0, t_eval=t_eval)
+    assert res.success, "IVP failed to solve!"
+    assert np.allclose(res.t, t_eval)
+
+    # extract true trajectory values
+    Vs = res.y.T
+    As = np.array([f(t, V) for t, V in zip(t_eval, Vs)])
+    ws = np.array([wrench(t) for t in t_eval])
+
+    # TODO is this correct?
+    if planar:
+        # zero out non-planar components and find the wrenches that would
+        # achieve that
+        Vs[:, 2:5] = 0
+        As[:, 2:5] = 0
+        ws = np.array([M @ A + rg.skew6(V) @ M @ V for V, A, in zip(Vs, As)])
+
+    # apply noise to velocity
+    vel_noise_raw = np.random.random(size=Vs.shape) - 0.5  # mean = 0, width = 1
+    vel_noise = VEL_NOISE_WIDTH * vel_noise_raw + VEL_NOISE_BIAS
+    if planar:
+        vel_noise[:, 2:5] = 0
+    Vs_noisy = Vs + vel_noise
+
+    # compute midpoint values
+    As_mid = (Vs_noisy[1:, :] - Vs_noisy[:-1, :]) / eval_step
+    Vs_mid = (Vs_noisy[1:, :] + Vs_noisy[:-1, :]) / 2
+
+    # apply noise to wrench
+    w_noise_raw = np.random.random(size=ws.shape) - 0.5
+    w_noise = WRENCH_NOISE_WIDTH * w_noise_raw + WRENCH_NOISE_BIAS
+    ws_noisy = ws + w_noise
+
+    return {
+        "Vs": Vs,
+        "As": As,
+        "ws": ws,
+        "Vs_noisy": Vs_mid,
+        "As_noisy": As_mid,
+        "ws_noisy": ws_noisy,
+    }
+
+
 def main():
     np.set_printoptions(suppress=True, precision=6)
     np.random.seed(0)
@@ -146,17 +297,10 @@ def main():
         "--type",
         choices=["points", "boxes"],
         help="Type of primitive to generate to make the random bodies.",
-        required=True,
-    )
-    parser.add_argument(
-        "--planar",
-        action="store_true",
-        help="Only use a trajectory in the x-y plane.",
-        required=False,
+        default="points",
     )
     args = parser.parse_args()
 
-    # bounding_box = rg.Box.cube(BOUNDING_BOX_HALF_EXTENT, center=OFFSET)
     bounding_box = rg.Box(BOUNDING_BOX_HALF_EXTENTS, center=OFFSET)
 
     obj_data_full = []
