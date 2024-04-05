@@ -744,7 +744,7 @@ class Box(ConvexPolyhedron):
         )
 
     def mbe(self, rcond=None, sphere=False, solver=None):
-        half_extents = self.half_extents * np.sqrt(3)
+        half_extents = self.half_extents * np.sqrt(3)  # TODO check this
         if sphere:
             radius = np.max(half_extents)
             return Ellipsoid.sphere(radius=radius, center=self.center)
