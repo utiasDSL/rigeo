@@ -6,6 +6,7 @@ from rigeo.constraint import (
     pim_must_equal_param_var,
     pim_psd,
 )
+from rigeo.experiment import WRL, generate_rigid_body_trajectory
 from rigeo.geodesic import positive_definite_distance
 from rigeo.shape import *
 from rigeo.identify import (
@@ -15,6 +16,7 @@ from rigeo.identify import (
 )
 from rigeo.inertial import H2I, I2H, InertialParameters
 from rigeo.random import *
+
 # from rigeo.regression import *
 from rigeo.rigidbody import RigidBody
 from rigeo.multibody import MultiBody

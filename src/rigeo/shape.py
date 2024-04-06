@@ -678,6 +678,11 @@ class Box(ConvexPolyhedron):
         """The volume of the box."""
         return np.product(self.side_lengths)
 
+    @property
+    def diaglen(self):
+        """Length of the box's diagonal."""
+        return 2 * np.linalg.norm(self.half_extents)
+
     def grid(self, n):
         """Generate a set of points evenly spaced in the box.
 
