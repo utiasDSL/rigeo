@@ -24,6 +24,8 @@ class WRL:
         The total number of vertices in the scene.
     polys : list[rg.ConvexPolyhedron]
         The polyhedra that compose the scene.
+    points : np.ndarray, shape (nv, 3)
+        All of the vertices in the scene.
     """
 
     def __init__(self, data, diaglen=1):
@@ -41,11 +43,15 @@ class WRL:
         self.nv = 0
         self.polys = []
 
+        scaled_points = []
         for shape in data.nodes:
             points = scale * np.array(shape.geometry.coord.point)
             poly = ConvexPolyhedron.from_vertices(points)
+            scaled_points.append(points)
             self.nv += len(points)
             self.polys.append(poly)
+
+        self.points = np.vstack(scaled_points)
 
     @classmethod
     def from_string(cls, s, **kwargs):
@@ -169,6 +175,7 @@ def generate_rigid_body_trajectory(
     # Vs_mid = (Vs_noisy[1:, :] + Vs_noisy[:-1, :]) / 2
 
     # apply noise to wrench
+    # TODO planar
     w_noise_raw = np.random.random(size=ws.shape) - 0.5
     w_noise = wrench_noise_width * w_noise_raw + wrench_noise_bias
     ws_noisy = ws + w_noise

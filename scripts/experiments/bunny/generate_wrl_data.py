@@ -14,7 +14,7 @@ import IPython
 NUM_PARAMS = 10
 
 # number of random point masses per parameter set
-NUM_POINTS_BOUNDS = [10, 25]
+NUM_POINTS_BOUNDS = [1, 10]
 
 # desired length of bounding box diagonal
 BB_DIAG_LEN = 1
@@ -36,7 +36,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("wrlfile", help="WRL/VRML file to load.")
-    parser.add_argument("outfile", help="Pickle file to save the data to.")
+    parser.add_argument("pklfile", help="Pickle file to save the data to.")
     args = parser.parse_args()
 
     scene = rg.WRL.from_file_path(args.wrlfile, diaglen=BB_DIAG_LEN)
@@ -90,9 +90,9 @@ def main():
         "params": param_data,
     }
 
-    with open(args.outfile, "wb") as f:
+    with open(args.pklfile, "wb") as f:
         pickle.dump(data, f)
-    print(f"Saved data to {args.outfile}")
+    print(f"Saved data to {args.pklfile}")
 
 
 main()
