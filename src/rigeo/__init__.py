@@ -6,11 +6,12 @@ from rigeo.constraint import (
     pim_must_equal_param_var,
     pim_psd,
 )
-from rigeo.experiment import WRL, generate_rigid_body_trajectory
+from rigeo.experiment import WRL, generate_rigid_body_trajectory, generate_rigid_body_trajectory2
 from rigeo.geodesic import positive_definite_distance
 from rigeo.shape import *
 from rigeo.identify import (
     IdentificationProblem,
+    IdentificationResult,
     entropic_regularizer,
     least_squares_objective,
 )

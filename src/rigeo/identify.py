@@ -1,3 +1,5 @@
+from dataclasses import dataclass
+
 import numpy as np
 import cvxpy as cp
 
@@ -74,6 +76,16 @@ def least_squares_objective(θs, As, bs, W0=None):
     return cp.quad_form(A @ θ - b, W)
 
 
+@dataclass
+class IdentificationResult:
+    """Result of parameter identification optimization."""
+
+    params: list
+    objective: float
+    iters: int
+    solve_time: float
+
+
 class IdentificationProblem:
     """Inertial parameter identification problem.
 
@@ -97,6 +109,7 @@ class IdentificationProblem:
         Once ``solve`` has been called, the underlying ``cvxpy.Problem``
         instance is made available for inspection.
     """
+
     def __init__(self, As, bs, γ=0, ε=0, solver=None):
         assert As.shape[0] == bs.shape[0]
         assert γ >= 0
@@ -152,10 +165,17 @@ class IdentificationProblem:
             for body, J in zip(bodies, Js):
                 constraints.extend(body.must_realize(J))
 
-        self.problem = cp.Problem(objective, constraints)
+        problem = cp.Problem(objective, constraints)
         solve_kwargs = {"solver": self.solver, **kwargs}
-        self.problem.solve(**solve_kwargs)
+        problem.solve(**solve_kwargs)
+
         assert (
-            self.problem.status == "optimal"
+            problem.status == "optimal"
         ), f"Optimization failed with status {problem.status}"
-        return [InertialParameters.from_vec(θ.value) for θ in θs]
+
+        return IdentificationResult(
+            params=[InertialParameters.from_vec(θ.value) for θ in θs],
+            objective=objective.value,
+            iters=problem.solver_stats.num_iters,
+            solve_time=problem.solver_stats.solve_time,
+        )

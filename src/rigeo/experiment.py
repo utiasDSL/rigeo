@@ -180,6 +180,106 @@ def generate_rigid_body_trajectory(
     w_noise = wrench_noise_width * w_noise_raw + wrench_noise_bias
     ws_noisy = ws + w_noise
 
+    # throw away last value so everything has same length as accelerations
+    return {
+        "Vs": Vs[:-1, :],
+        "As": As[:-1, :],
+        "ws": ws[:-1, :],
+        "Vs_noisy": Vs_noisy[:-1, :],
+        "As_noisy": As_noisy,
+        "ws_noisy": ws_noisy[:-1, :],
+    }
+
+
+def generate_rigid_body_trajectory2(
+    params,
+    duration=2 * np.pi,
+    eval_step=0.1,
+    planar=False,
+    vel_noise_bias=0,
+    vel_noise_width=0,
+    wrench_noise_bias=0,
+    wrench_noise_width=0,
+):
+    """Generate a random trajectory for a rigid body.
+
+    Parameters
+    ----------
+    params : rg.InertialParameters
+        The inertial parameters of the body.
+    duration : float, positive
+        The duration of the trajectory.
+    eval_step : float, positive
+        Interval at which to sample the trajectory.
+    planar : bool
+        Set to ``True`` to restrict the body to planar motion.
+
+    Returns
+    -------
+    """
+
+    def velocity(t):
+        """Body-frame spatial velocity of the rigid body."""
+        V = np.array(
+            [
+                np.sin(t),
+                np.sin(t + np.pi / 3),
+                np.sin(t + 2 * np.pi / 3),
+                np.sin(t + np.pi),
+                np.sin(t + 4 * np.pi / 3),
+                np.sin(t + 5 * np.pi / 3),
+            ]
+        )
+        if planar:
+            V[2:5] = 0
+        return V
+
+    def acceleration(t):
+        """Body-frame spatial acceleration of the rigid body."""
+        A = np.array(
+            [
+                np.cos(t),
+                np.cos(t + np.pi / 3),
+                np.cos(t + 2 * np.pi / 3),
+                np.cos(t + np.pi),
+                np.cos(t + 4 * np.pi / 3),
+                np.cos(t + 5 * np.pi / 3),
+            ]
+        )
+        if planar:
+            A[2:5] = 0
+        return A
+
+    # compute true trajectory values
+    n, t_eval = compute_evaluation_times(duration=duration, step=eval_step)
+    Vs = np.array([velocity(t) for t in t_eval])
+    As = np.array([acceleration(t) for t in t_eval])
+    M = params.M
+    ws = np.array([M @ A + skew6(V) @ M @ V for V, A, in zip(Vs, As)])
+
+    # apply noise to velocity
+    vel_noise_raw = np.random.random(size=Vs.shape) - 0.5  # mean = 0, width = 1
+    vel_noise = vel_noise_width * vel_noise_raw + vel_noise_bias
+    if planar:
+        vel_noise[:, 2:5] = 0
+    Vs_noisy = Vs + vel_noise
+
+    # sample velocities at the half intervals to compute acceleration via central differences
+    t_eval2 = t_eval - 0.5 * eval_step
+    t_eval2 = np.append(t_eval2, t_eval2[-1] + eval_step)
+    V2 = np.array([velocity(t) for t in t_eval2])
+    V2_noise_raw = np.random.random(size=V2.shape) - 0.5
+    V2_noise = vel_noise_width * V2_noise_raw + vel_noise_bias
+    if planar:
+        V2_noise[:, 2:5] = 0
+    V2_noisy = V2 + V2_noise
+    As_noisy = (V2_noisy[1:, :] - V2_noisy[:-1, :]) / eval_step
+
+    # apply noise to wrench
+    w_noise_raw = np.random.random(size=ws.shape) - 0.5
+    w_noise = wrench_noise_width * w_noise_raw + wrench_noise_bias
+    ws_noisy = ws + w_noise
+
     return {
         "Vs": Vs,
         "As": As,

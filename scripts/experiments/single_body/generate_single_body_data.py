@@ -15,9 +15,9 @@ import IPython
 NUM_OBJ = 10
 NUM_PRIMITIVE_BOUNDS = [10, 25]
 BOUNDING_BOX_HALF_EXTENTS = [0.5, 0.5, 0.5]
+MASS_BOUNDS = [0.1, 1.0]  # TODO vary as well?
 # OFFSET = np.array([0.2, 0, 0])
 OFFSET = np.array([0, 0, 0])
-MASS = 1.0  # TODO vary as well?
 
 # noise
 VEL_NOISE_WIDTH = 0.1
@@ -48,12 +48,19 @@ def main():
     param_data = []
     vertices_data = []
 
+    mass_width = MASS_BOUNDS[1] - MASS_BOUNDS[0]
+    assert mass_width >= 0
+
     for i in range(NUM_OBJ):
+        # random total mass
+        mass = np.random.random() * mass_width + MASS_BOUNDS[0]
+
+        # random point masses
         num_primitives = np.random.randint(
             low=NUM_PRIMITIVE_BOUNDS[0], high=NUM_PRIMITIVE_BOUNDS[1] + 1
         )
         masses = np.random.random(num_primitives)
-        masses = masses / sum(masses) * MASS
+        masses = masses / sum(masses) * mass
 
         if args.type == "points":
             # random point mass system contained in the bounding box
@@ -79,12 +86,12 @@ def main():
             params = sum(all_params)
             vertices = rg.convex_hull(np.vstack(all_vertices))
 
-        assert np.isclose(params.mass, MASS)
+        assert np.isclose(params.mass, mass)
         assert bounding_box.contains(params.com)
 
         # note noise will be different in each, but this is fine if we only use
         # one for training
-        full_traj = rg.generate_rigid_body_trajectory(
+        full_traj = rg.generate_rigid_body_trajectory2(
             params=params,
             vel_noise_width=VEL_NOISE_WIDTH,
             vel_noise_bias=VEL_NOISE_BIAS,
@@ -92,7 +99,7 @@ def main():
             wrench_noise_bias=WRENCH_NOISE_BIAS,
             planar=False,
         )
-        planar_traj = rg.generate_rigid_body_trajectory(
+        planar_traj = rg.generate_rigid_body_trajectory2(
             params=params,
             vel_noise_width=VEL_NOISE_WIDTH,
             vel_noise_bias=VEL_NOISE_BIAS,
