@@ -106,6 +106,13 @@ def main():
     num_iterations = ErrorSet("Num iterations")
     solve_times = ErrorSet("Solve time")
 
+    # verification
+    # for i in range(data["num_params"]):
+    #     params = data["params"][i]
+    #     body = rg.RigidBody(shapes=scene.polys, params=params)
+    #     solved, stats = body.is_realizable(verbose=True, solver=SOLVER, warm_start=False)
+    #     print(stats.solve_time)
+
     for i in range(data["num_params"]):
         params = data["params"][i]
 

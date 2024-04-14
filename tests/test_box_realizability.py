@@ -21,7 +21,7 @@ def test_cube_at_origin_can_realize():
     points = np.array([-box.half_extents, box.half_extents])
     masses = [0.5, 0.5]
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert box.can_realize(params, tol=1e-12)
+    assert box.can_realize(params, eps=-1e-12)
 
     masses = np.ones(8)
     params = rg.InertialParameters.from_point_masses(masses=masses, points=box.vertices)

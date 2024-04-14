@@ -1,6 +1,7 @@
 import numpy as np
 
 
+# TODO get rid of this
 class PointToPointTrajectory:
     """A straight-line trajectory between two points."""
 

@@ -125,19 +125,19 @@ class Shape(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def can_realize(self, params, tol=0, solver=None):
+    def can_realize(self, params, eps=0, **kwargs):
         """Check if the shape can realize the inertial parameters.
 
         Parameters
         ----------
         params : InertialParameters
             The inertial parameters to check.
-        tol : float
-            Numerical tolerance for realization. This is applied in a
-            shape-dependent manner.
-        solver : str or None
-            If checking realizability requires solving an optimization problem,
-            a solver can optionally be specified.
+        eps : float
+            The parameters will be considered consistent if all of the
+            eigenvalues of the pseudo-inertia matrix are greater than or equal
+            to ``eps``.
+
+        Additional keyword arguments are passed to the solver, if one is needed.
 
         Returns
         -------
@@ -157,7 +157,7 @@ class Shape(abc.ABC):
             The cvxpy inertial parameter variable. If shape is ``(4, 4)``, this
             is interpreted as the pseudo-inertia matrix. If shape is ``(10,)``,
             this is interpreted as the inertial parameter vector.
-        eps : float, non-negative
+        eps : float
             Pseudo-inertia matrix ``J`` is constrained such that ``J - eps *
             np.eye(4)`` is positive semidefinite and J is symmetric.
 
@@ -480,18 +480,18 @@ class ConvexPolyhedron(Shape):
 
         return np.min(np.linalg.eigvals(H_max - params.H)) >= -tol
 
-    def can_realize(self, params, tol=0, solver=None):
+    def can_realize(self, params, eps=0, **kwargs):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
-        assert tol >= 0, "Numerical tolerance cannot be negative."
-        if not params.consistent(tol=tol):
+        # assert tol >= 0, "Numerical tolerance cannot be negative."
+        if not params.consistent(eps=eps):
             return False
 
         # special case for tetrahedra: this does not require solving an
         # optimization problem
         if self.nv == 4:
-            return self._can_realize_tetrahedron(params, tol=tol)
+            return self._can_realize_tetrahedron(params, tol=0)  # TODO
 
         Vs = np.array([np.outer(v, v) for v in self.vertices])
         ms = cp.Variable(self.nv)
@@ -504,7 +504,7 @@ class ConvexPolyhedron(Shape):
             params.H << cp.sum([μ * V for μ, V in zip(ms, Vs)]),
         ]
         problem = cp.Problem(objective, constraints)
-        problem.solve(solver=solver)
+        problem.solve(**kwargs)
         return problem.status == "optimal"
 
     def must_realize(self, param_var, eps=0):
@@ -766,13 +766,13 @@ class Box(ConvexPolyhedron):
         """
         return ConvexPolyhedron.from_vertices(self.vertices)
 
-    def can_realize(self, params, tol=0, solver=None):
-        assert tol >= 0, "Numerical tolerance cannot be negative."
-        if not params.consistent(tol=tol):
+    def can_realize(self, params, eps=0, **kwargs):
+        # assert eps >= 0, "Numerical tolerance cannot be negative."
+        if not params.consistent(eps=eps):
             return False
         return np.all(
             [
-                np.trace(U.T @ params.J @ U @ E.Q) >= -tol
+                np.trace(U.T @ params.J @ U @ E.Q) >= 0
                 for E, U in zip(self._ellipsoids, self._Us)
             ]
         )
@@ -1036,14 +1036,14 @@ class Ellipsoid(Shape):
             constraints.append(c)
         return constraints
 
-    def can_realize(self, params, tol=0, solver=None):
+    def can_realize(self, params, eps=0, **kwargs):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
-        assert tol >= 0, "Numerical tolerance cannot be negative."
-        if not params.consistent(tol=tol):
+        # assert eps >= 0, "Numerical tolerance cannot be negative."
+        if not params.consistent(eps=eps):
             return False
-        return np.trace(self.Q @ params.J) >= -tol
+        return np.trace(self.Q @ params.J) >= 0
 
     def must_realize(self, param_var, eps=0):
         assert (
@@ -1245,13 +1245,12 @@ class Cylinder(Shape):
             for c in E.must_contain(P, scale=scale)
         ]
 
-    def can_realize(self, params, tol=0, solver=None):
-        assert tol >= 0, "Numerical tolerance cannot be negative."
-        if not params.consistent(tol=tol):
+    def can_realize(self, params, eps=0, **kwargs):
+        if not params.consistent(eps=eps):
             return False
         return np.all(
             [
-                np.trace(U.T @ params.J @ U @ E.Q) >= -tol
+                np.trace(U.T @ params.J @ U @ E.Q) >= 0
                 for E, U in zip(self._ellipsoids, self._Us)
             ]
         )
@@ -1411,9 +1410,8 @@ class Capsule(Shape):
         )
         return Capsule(cylinder=new_cylinder)
 
-    def can_realize(self, params, tol=0, solver=None):
-        assert tol >= 0, "Numerical tolerance cannot be negative."
-        if not params.consistent(tol=tol):
+    def can_realize(self, params, eps=0, **kwargs):
+        if not params.consistent(eps=eps):
             return False
 
         Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
@@ -1423,7 +1421,7 @@ class Capsule(Shape):
             c for J, shape in zip(Js, self._shapes) for c in shape.must_realize(J)
         ]
         problem = cp.Problem(objective, constraints)
-        problem.solver(solver=solver)
+        problem.solver(**kwargs)
         return problem.status == "optimal"
 
     def must_realize(self, param_var, eps=0):

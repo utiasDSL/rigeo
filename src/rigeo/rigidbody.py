@@ -1,5 +1,7 @@
 """Three-dimensional rigid bodies."""
 from collections.abc import Iterable
+from dataclasses import dataclass
+import time
 
 import numpy as np
 import cvxpy as cp
@@ -7,6 +9,15 @@ import cvxpy as cp
 import rigeo.util as util
 from rigeo.inertial import InertialParameters
 from rigeo.constraint import pim_must_equal_param_var
+
+
+# TODO put this somewhere else
+@dataclass
+class VerificationStats:
+    """Stats of parameter verification optimization."""
+
+    iters: int
+    solve_time: float
 
 
 class RigidBody:
@@ -42,7 +53,7 @@ class RigidBody:
             return self
         return self.__add__(other)
 
-    def is_realizable(self, solver=None):
+    def is_realizable(self, eps=0, **kwargs):
         """Check if the rigid body is density realizable.
 
         Parameters
@@ -57,18 +68,20 @@ class RigidBody:
             ``True`` if ``self.params`` is realizable on ``self.shapes``,
             ``False`` otherwise.
         """
-        return self.can_realize(self.params, solver=solver)
+        return self.can_realize(self.params, eps=eps, **kwargs)
 
-    def can_realize(self, params, solver=None):
+    def can_realize(self, params, eps=0, verbose=False, **kwargs):
         """Check if the rigid body can realize a set of inertial parameters.
 
         Parameters
         ----------
         params : InertialParameters
             The inertial parameters to check.
-        solver : str or None
-            If checking realizability requires solving an optimization problem,
-            one can optionally be specified.
+        eps : float, non-negative
+            Pseudo-inertia matrix ``J`` is constrained such that ``J - eps *
+            np.eye(4)`` is positive semidefinite and J is symmetric.
+
+        Additional arguments are passed to the solver.
 
         Returns
         -------
@@ -77,17 +90,29 @@ class RigidBody:
         """
         # with one shape, we can just check
         if len(self.shapes) == 1:
-            return self.shapes[0].can_realize(params, solver=solver)
+            return self.shapes[0].can_realize(params, **kwargs)
 
         # otherwise we need to solve an opt problem
         J = cp.Variable((4, 4), PSD=True)
-        constraints = self.must_realize(J, eps=0) + [J == params.J]
+        constraints = self.must_realize(J, eps=eps) + [J == params.J]
 
         # feasibility problem
         objective = cp.Minimize(0)
         problem = cp.Problem(objective, constraints)
-        problem.solve(solver=solver)
-        return problem.status == "optimal"
+
+        t0 = time.time()
+        problem.solve(**kwargs)
+        t1 = time.time()
+
+        solved = problem.status == "optimal"
+
+        if verbose:
+            stats = VerificationStats(
+                iters=problem.solver_stats.num_iters,
+                solve_time=t1 - t0,
+            )
+            return solved, stats
+        return solved
 
     def must_realize(self, param_var, eps=0):
         """Generate cvxpy constraints for inertial parameters to be realizable

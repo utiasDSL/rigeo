@@ -178,7 +178,7 @@ class InertialParameters:
 
     @classmethod
     def random(cls):
-        """Generate a random set of physically consistent inertial parameters.
+        """Generate a random set of fully physically consistent inertial parameters.
 
         Useful for testing purposes.
         """
@@ -202,7 +202,7 @@ class InertialParameters:
         """
         return np.allclose(self.J, other.J)
 
-    def consistent(self, tol=0):
+    def consistent(self, eps=0):
         """Check if the inertial parameters are fully physically consistent.
 
         This means that there exists a physical rigid body that can have these
@@ -211,18 +211,17 @@ class InertialParameters:
 
         Parameters
         ----------
-        tol : float, non-negative
+        eps : float
             The parameters will be considered consistent if all of the
             eigenvalues of the pseudo-inertia matrix are greater than or equal
-            to ``-tol``.
+            to ``eps``.
 
         Returns
         -------
         : bool
             ``True`` if the parameters are consistent, ``False`` otherwise.
         """
-        assert tol >= 0, "Numerical tolerance cannot be negative."
-        return np.min(np.linalg.eigvals(self.J)) >= -tol
+        return np.min(np.linalg.eigvals(self.J)) >= eps
 
     def transform(self, rotation=None, translation=None):
         if rotation is None:
