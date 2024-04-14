@@ -21,8 +21,6 @@ from rigeo.identify import (
 )
 from rigeo.inertial import H2I, I2H, InertialParameters
 from rigeo.random import *
-
-# from rigeo.regression import *
 from rigeo.rigidbody import RigidBody
 from rigeo.multibody import MultiBody
 

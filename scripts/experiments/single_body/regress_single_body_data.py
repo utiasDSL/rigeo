@@ -248,9 +248,6 @@ def main():
         print()
         solve_times.print(index=i)
 
-        # if i == 19:
-        #     IPython.embed()
-
     s = green("Medians\n=======")
     print("\n" + s + "\n")
     riemannian_errors.print_average()
