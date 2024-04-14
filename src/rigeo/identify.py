@@ -1,10 +1,11 @@
 from dataclasses import dataclass
+import time
 
 import numpy as np
 import cvxpy as cp
 
-from rigeo.constraint import pim_psd, pim_must_equal_vec
-from rigeo.inertial import InertialParameters
+from .constraint import pim_psd, pim_must_equal_vec
+from .inertial import InertialParameters
 
 
 def entropic_regularizer(Js, J0s):
@@ -166,8 +167,14 @@ class IdentificationProblem:
                 constraints.extend(body.must_realize(J))
 
         problem = cp.Problem(objective, constraints)
-        solve_kwargs = {"solver": self.solver, **kwargs}
+
+        # no warm start because we don't want the different problems
+        # influencing each other
+        solve_kwargs = {"solver": self.solver, "warm_start": False, **kwargs}
+
+        t0 = time.time()
         problem.solve(**solve_kwargs)
+        t1 = time.time()
 
         assert (
             problem.status == "optimal"
@@ -177,5 +184,5 @@ class IdentificationProblem:
             params=[InertialParameters.from_vec(θ.value) for θ in θs],
             objective=objective.value,
             iters=problem.solver_stats.num_iters,
-            solve_time=problem.solver_stats.solve_time,
+            solve_time=t1 - t0,
         )

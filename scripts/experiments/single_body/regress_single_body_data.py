@@ -7,8 +7,6 @@ import pickle
 import time
 
 import numpy as np
-import pybullet_data
-import pinocchio
 import cvxpy as cp
 import colorama
 
@@ -102,7 +100,6 @@ def main():
     with open(args.infile, "rb") as f:
         data = pickle.load(f)
 
-    θ_errors = ErrorSet("θ error")
     riemannian_errors = ErrorSet("Riemannian error")
     validation_errors = ErrorSet("Validation error")
     objective_values = ErrorSet("Objective value")
@@ -134,8 +131,6 @@ def main():
 
         n = Vs.shape[0]
         n_train = int(TRAIN_TEST_SPLIT * n)
-        # n_train = 1
-        # cov = np.eye(6)  # TODO?
 
         # regression/training data
         if TRAIN_WITH_PLANAR_ONLY:
@@ -163,7 +158,6 @@ def main():
         Ys_test = np.array(
             [rg.RigidBody.regressor(V, A) for V, A in zip(Vs_test, As_test)]
         )
-        # ws_test = ws_noisy[n_train:-1]
         ws_test = ws[n_train:]
 
         # solve the problem with no noise (just to make sure things are working)
@@ -172,7 +166,6 @@ def main():
         )[:n_train]
         ws_train_noiseless = ws[:n_train]
 
-        # TODO support covariance again
         prob_noiseless = rg.IdentificationProblem(
             As=Ys_train_noiseless,
             bs=ws_train_noiseless,
@@ -191,10 +184,6 @@ def main():
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
         )
-        # params_nom = prob.solve([body], must_realize=False)[0]
-        # params_poly = prob.solve([body], must_realize=True)[0]
-        # params_ell = prob.solve([body_mbe], must_realize=True)[0]
-        # params_both = prob.solve_both(vertices, ellipsoid)
 
         res_nom = prob.solve([body], must_realize=False)
         res_poly = prob.solve([body], must_realize=True)
@@ -203,17 +192,6 @@ def main():
         params_nom = res_nom.params[0]
         params_poly = res_poly.params[0]
         params_ell = res_ell.params[0]
-
-        # regularize with equal point masses
-        # params_grid = DiscretizedIPIDProblem(
-        #     Ys_train, ws_train, cov, reg_masses, reg_coeff=REGULARIZATION_COEFF
-        # ).solve(grid)
-
-        # θ_errors.no_noise.append(np.linalg.norm(params.vec - params_noiseless.vec))
-        # θ_errors.nominal.append(np.linalg.norm(params.vec - params_nom.vec))
-        # θ_errors.ellipsoid.append(np.linalg.norm(params.vec - params_ell.vec))
-        # θ_errors.polyhedron.append(np.linalg.norm(params.vec - params_poly.vec))
-        # θ_errors.discrete.append(np.linalg.norm(params.θ - params_grid.θ))
 
         riemannian_errors.no_noise.append(
             rg.positive_definite_distance(params.J, params_noiseless.J)
@@ -227,9 +205,6 @@ def main():
         riemannian_errors.polyhedron.append(
             rg.positive_definite_distance(params.J, params_poly.J)
         )
-        # riemannian_errors.discrete.append(
-        #     rg.positive_definite_distance(params.J, params_grid.J)
-        # )
 
         validation_errors.no_noise.append(
             rg.validation_rmse(Ys_test, ws_test, params_noiseless.vec)
@@ -243,9 +218,6 @@ def main():
         validation_errors.polyhedron.append(
             rg.validation_rmse(Ys_test, ws_test, params_poly.vec)
         )
-        # validation_errors.discrete.append(
-        #     rg.validation_rmse(Ys_test, ws_test, params_grid.θ)
-        # )
 
         objective_values.no_noise.append(res_noiseless.objective)
         objective_values.nominal.append(res_nom.objective)

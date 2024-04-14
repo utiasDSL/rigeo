@@ -15,7 +15,7 @@ import IPython
 NUM_OBJ = 10
 NUM_PRIMITIVE_BOUNDS = [10, 25]
 BOUNDING_BOX_HALF_EXTENTS = [0.5, 0.5, 0.5]
-MASS_BOUNDS = [0.1, 1.0]  # TODO vary as well?
+MASS_BOUNDS = [0.1, 1.0]
 # OFFSET = np.array([0.2, 0, 0])
 OFFSET = np.array([0, 0, 0])
 
