@@ -15,9 +15,6 @@ import rigeo as rg
 import IPython
 
 
-# these values are taken from the Robotiq FT-300 datasheet
-# WRENCH_STDEV = np.array([1.2, 1.2, 0.5, 0.02, 0.02, 0.03])
-
 # fraction of data to be used for training (vs. testing)
 TRAIN_TEST_SPLIT = 0.5
 
@@ -53,7 +50,6 @@ class ErrorSet:
         self.nominal = []
         self.ellipsoid = []
         self.polyhedron = []
-        self.discrete = []
 
     def print(self, index=None):
         print(self.name)
@@ -68,7 +64,6 @@ class ErrorSet:
         print(f"nominal    = {self.nominal[s]}")
         print(f"ellipsoid  = {self.ellipsoid[s]}")
         print(f"polyhedron = {self.polyhedron[s]}")
-        # print(f"discrete   = {self.discrete[s]}")
 
     def print_average(self):
         print(self.name)
@@ -77,7 +72,6 @@ class ErrorSet:
         print(f"nominal    = {np.median(self.nominal)}")
         print(f"ellipsoid  = {np.median(self.ellipsoid)}")
         print(f"polyhedron = {np.median(self.polyhedron)}")
-        # print(f"discrete   = {np.median(self.discrete)}")
 
         poly = np.array(self.polyhedron)
         nom = np.array(self.nominal)
@@ -150,9 +144,7 @@ def main():
             [rg.RigidBody.regressor(V, A) for V, A in zip(Vs_train, As_train)]
         )
 
-        # test/validation data
-        # TODO not sure if we should use the noisy or noiseless data for
-        # testing -- noiseless is basically ground-truth
+        # test/validation data: use noiseless ground-truth
         Vs_test = Vs[n_train:]
         As_test = As[n_train:]
         Ys_test = np.array(
@@ -169,9 +161,10 @@ def main():
         prob_noiseless = rg.IdentificationProblem(
             As=Ys_train_noiseless,
             bs=ws_train_noiseless,
-            solver=SOLVER,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            solver=SOLVER,
+            warm_start=False,
         )
         res_noiseless = prob_noiseless.solve([body], must_realize=False)
         params_noiseless = res_noiseless.params[0]
@@ -180,9 +173,10 @@ def main():
         prob = rg.IdentificationProblem(
             As=Ys_train,
             bs=ws_train,
-            solver=SOLVER,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            solver=SOLVER,
+            warm_start=False,
         )
 
         res_nom = prob.solve([body], must_realize=False)

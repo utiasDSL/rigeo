@@ -84,6 +84,15 @@ class ErrorSet:
         # print(f"poly better than ell: {n_poly_better_than_ell}/{n}")
 
 
+def verification(data):
+    for i in range(data["num_params"]):
+        params = data["params"][i]
+        body = rg.RigidBody(shapes=scene.polys, params=params)
+        solved, stats = body.is_realizable(verbose=True, solver=SOLVER, warm_start=False)
+        print(stats.solve_time)
+
+
+
 def main():
     np.set_printoptions(suppress=True, precision=6)
     np.random.seed(0)
@@ -106,12 +115,6 @@ def main():
     num_iterations = ErrorSet("Num iterations")
     solve_times = ErrorSet("Solve time")
 
-    # verification
-    # for i in range(data["num_params"]):
-    #     params = data["params"][i]
-    #     body = rg.RigidBody(shapes=scene.polys, params=params)
-    #     solved, stats = body.is_realizable(verbose=True, solver=SOLVER, warm_start=False)
-    #     print(stats.solve_time)
 
     for i in range(data["num_params"]):
         params = data["params"][i]
@@ -169,9 +172,10 @@ def main():
         prob_noiseless = rg.IdentificationProblem(
             As=Ys_train_noiseless,
             bs=ws_train_noiseless,
-            solver=SOLVER,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            solver=SOLVER,
+            warm_start=False,
         )
         res_noiseless = prob_noiseless.solve([body], must_realize=False)
         params_noiseless = res_noiseless.params[0]
@@ -180,9 +184,10 @@ def main():
         prob = rg.IdentificationProblem(
             As=Ys_train,
             bs=ws_train,
-            solver=SOLVER,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            solver=SOLVER,
+            warm_start=False,
         )
         res_nom = prob.solve([body], must_realize=False)
         res_poly = prob.solve([body], must_realize=True)

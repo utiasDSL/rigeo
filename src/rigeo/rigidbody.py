@@ -1,6 +1,5 @@
 """Three-dimensional rigid bodies."""
 from collections.abc import Iterable
-from dataclasses import dataclass
 import time
 
 import numpy as np
@@ -9,15 +8,7 @@ import cvxpy as cp
 import rigeo.util as util
 from rigeo.inertial import InertialParameters
 from rigeo.constraint import pim_must_equal_param_var
-
-
-# TODO put this somewhere else
-@dataclass
-class VerificationStats:
-    """Stats of parameter verification optimization."""
-
-    iters: int
-    solve_time: float
+from rigeo.shape import VerificationStats
 
 
 class RigidBody:
@@ -90,6 +81,7 @@ class RigidBody:
         """
         # with one shape, we can just check
         if len(self.shapes) == 1:
+            # TODO also return stats here if verbose=True
             return self.shapes[0].can_realize(params, **kwargs)
 
         # otherwise we need to solve an opt problem

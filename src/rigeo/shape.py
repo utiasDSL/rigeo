@@ -1,6 +1,7 @@
 """Polyhedral and ellipsoidal geometry."""
 import abc
 from collections.abc import Iterable
+from dataclasses import dataclass
 
 import numpy as np
 import cvxpy as cp
@@ -64,6 +65,14 @@ def _mie_inequality_form(A, b, sphere=False, solver=None):
 
     E = B.value @ B.value
     return Ellipsoid.from_shape_matrix(S=np.linalg.inv(E), center=c.value)
+
+
+@dataclass
+class VerificationStats:
+    """Stats of parameter verification optimization."""
+
+    iters: int
+    solve_time: float
 
 
 class Shape(abc.ABC):
@@ -491,7 +500,7 @@ class ConvexPolyhedron(Shape):
         # special case for tetrahedra: this does not require solving an
         # optimization problem
         if self.nv == 4:
-            return self._can_realize_tetrahedron(params, tol=0)  # TODO
+            return self._can_realize_tetrahedron(params, tol=0)  # TODO fix tol
 
         Vs = np.array([np.outer(v, v) for v in self.vertices])
         ms = cp.Variable(self.nv)

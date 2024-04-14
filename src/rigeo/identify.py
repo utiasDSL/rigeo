@@ -111,7 +111,7 @@ class IdentificationProblem:
         instance is made available for inspection.
     """
 
-    def __init__(self, As, bs, γ=0, ε=0, solver=None):
+    def __init__(self, As, bs, γ=0, ε=0, **kwargs):
         assert As.shape[0] == bs.shape[0]
         assert γ >= 0
         assert ε >= 0
@@ -124,9 +124,9 @@ class IdentificationProblem:
         self.γ = γ
         self.ε = ε
 
-        self.solver = solver
+        self.solve_kwargs = kwargs
 
-    def solve(self, bodies, must_realize=True, **kwargs):
+    def solve(self, bodies, must_realize=True):
         """Solve the identification problem.
 
         Additional ``kwargs`` are passed to the `solve` method of the
@@ -170,10 +170,10 @@ class IdentificationProblem:
 
         # no warm start because we don't want the different problems
         # influencing each other
-        solve_kwargs = {"solver": self.solver, "warm_start": False, **kwargs}
+        # solve_kwargs = {"solver": self.solver, "warm_start": False, **kwargs}
 
         t0 = time.time()
-        problem.solve(**solve_kwargs)
+        problem.solve(**self.solve_kwargs)
         t1 = time.time()
 
         assert (
