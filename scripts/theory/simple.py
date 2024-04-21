@@ -1,4 +1,4 @@
-"""Claim: aa^T <= bb^T + cc^T --> a = α1 + b * α2 * c"""
+"""Claim: aa^T <= bb^T + cc^T implies a = α1 * b + α2 * c"""
 import numpy as np
 from scipy.linalg import sqrtm
 import cvxpy as cp
