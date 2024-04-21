@@ -15,10 +15,42 @@ from rigeo.inertial import InertialParameters
 
 
 def _inv_with_zeros(a, tol=1e-8):
+    """Invert an array that may contain zeros.
+
+    The inverse of an entry that is (close to) zero is replaced with np.inf.
+    """
     zero_mask = np.isclose(a, 0, rtol=0, atol=tol)
     out = np.inf * np.ones_like(a)
     np.divide(1.0, a, out=out, where=~zero_mask)
     return out
+
+
+def _Q_matrix(S, c, bound=1):
+    """Helper to build an ellipsoid's Q matrix.
+
+    Parameters
+    ----------
+    S : np.ndarray, shape (dim, dim)
+        The ellipsoid shape matrix.
+    c : np.ndarray, shape (dim,)
+        The ellipsoid center.
+    bound : float
+        The bound for points to be included in the ellipsoid: ``(p - c) @ S @
+        (p - c) <= bound``. Typically this is one, but could also be zero if the
+        ellipsoid has no length along some direction.
+
+    Returns
+    -------
+    : np.ndarray, shape (dim + 1, dim + 1)
+        The Q matrix.
+    """
+    dim = S.shape[0]
+    Q = np.zeros((dim + 1, dim + 1))
+    Q[:dim, :dim] = -S
+    Q[:dim, dim] = S @ c
+    Q[dim, :dim] = Q[:dim, dim]
+    Q[dim, dim] = bound - c @ S @ c
+    return Q
 
 
 def _box_vertices(half_extents, center, rotation):
@@ -954,13 +986,27 @@ class Ellipsoid(Shape):
         .. math::
            \\mathcal{E} = \\{x\\in\\mathbb{R}^d \\mid \\tilde{x}^TQ\\tilde{q}\\geq 0\\}
         """
+        return _Q_matrix(self.S, self.center)
 
-        Q = np.zeros((self.dim + 1, self.dim + 1))
-        Q[: self.dim, : self.dim] = -self.S
-        Q[: self.dim, self.dim] = self.S @ self.center
-        Q[self.dim, : self.dim] = Q[: self.dim, self.dim]
-        Q[self.dim, self.dim] = 1 - self.center @ self.S @ self.center
-        return Q
+        # Q = np.zeros((self.dim + 1, self.dim + 1))
+        # Q[: self.dim, : self.dim] = -self.S
+        # Q[: self.dim, self.dim] = self.S @ self.center
+        # Q[self.dim, : self.dim] = Q[: self.dim, self.dim]
+        # Q[self.dim, self.dim] = 1 - self.center @ self.S @ self.center
+        # return Q
+
+    def Q_degenerate(self):
+        zero_mask = np.isclose(self.half_extents, 0)
+
+        # non-zero directions treated normally
+        nonzero_axes = self.half_extents[~zero_mask] * self.rotation[:, ~zero_mask]
+        nonzero_Q = _Q_matrix(nonzero_axes @ nonzero_axes.T, self.center)
+
+        # zero directions must have no spread in the mass distribution
+        zero_axes = self.rotation[:, zero_mask]
+        zero_Q = _Q_matrix(zero_axes @ zero_axes.T, self.center, bound=0)
+
+        return nonzero_Q, zero_Q
 
     def is_degenerate(self):
         """Check if the ellipsoid is degenerate.
@@ -1049,17 +1095,35 @@ class Ellipsoid(Shape):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
-        # assert eps >= 0, "Numerical tolerance cannot be negative."
         if not params.consistent(eps=eps):
             return False
-        return np.trace(self.Q @ params.J) >= 0
+
+        # non-degenerate case
+        if not self.is_degenerate():
+            assert np.isfinite(self.Q).all()
+            return np.trace(self.Q @ params.J) >= 0  # TODO tolerance?
+
+        # degenerate case requires checking Q matrices in the zero and non-zero
+        # length directions separately
+        nonzero_Q, zero_Q = self.Q_degenerate()
+        return np.trace(nonzero_Q @ params.J) >= 0 and np.isclose(
+            np.trace(zero_Q @ params.J), 0
+        )
 
     def must_realize(self, param_var, eps=0):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-        return psd_constraints + [cp.trace(self.Q @ J) >= 0]
+
+        if not self.is_degenerate():
+            return psd_constraints + [cp.trace(self.Q @ J) >= 0]
+
+        nonzero_Q, zero_Q = self.Q_degenerate()
+        return psd_constraints + [
+            cp.trace(nonzero_Q @ J) >= 0,
+            cp.trace(zero_Q @ J) == 0,
+        ]
 
     def mbe(self, rcond=None, sphere=False):
         if not sphere:
@@ -1215,6 +1279,17 @@ class Cylinder(Shape):
         U2[3, 2] = 1
         self._Us = [U1, U2]
 
+        # disks that make up the convex hull
+        disk_extents = [self.radius, self.radius, 0]
+        disk_centers = self.endpoints()
+        disk1 = Ellipsoid(
+            half_extents=disk_extents, center=disk_centers[0], rotation=self.rotation
+        )
+        disk2 = Ellipsoid(
+            half_extents=disk_extents, center=disk_centers[1], rotation=self.rotation
+        )
+        self._disks = [disk1, disk2]
+
     @property
     def longitudinal_axis(self):
         return self.rotation[:, 2]
@@ -1257,19 +1332,51 @@ class Cylinder(Shape):
     def can_realize(self, params, eps=0, **kwargs):
         if not params.consistent(eps=eps):
             return False
-        return np.all(
-            [
-                np.trace(U.T @ params.J @ U @ E.Q) >= 0
-                for E, U in zip(self._ellipsoids, self._Us)
-            ]
-        )
+        # return np.all(
+        #     [
+        #         np.trace(U.T @ params.J @ U @ E.Q) >= 0
+        #         for E, U in zip(self._ellipsoids, self._Us)
+        #     ]
+        # )
+
+        Js = [cp.Variable((4, 4), PSD=True) for _ in self._disks]
+        J_sum = cp.Variable((4, 4), PSD=True)
+
+        objective = cp.Minimize([0])  # feasibility problem
+        constraints = [
+            J_sum == cp.sum(Js),
+            params.mass == J_sum[3, 3],
+            params.h == J_sum[:3, 3],
+            params.H << J_sum[:3, :3],
+        ] + [c for J, disk in zip(Js, self._disks) for c in disk.must_realize(J, eps=0)]
+        problem = cp.Problem(objective, constraints)
+        problem.solve(**kwargs)
+        return problem.status == "optimal"
 
     def must_realize(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-        return psd_constraints + [
-            cp.trace(U.T @ params.J @ U @ E.Q) >= 0
-            for E, U in zip(self._ellipsoids, self._Us)
-        ]
+        # return psd_constraints + [
+        #     cp.trace(U.T @ params.J @ U @ E.Q) >= 0
+        #     for E, U in zip(self._ellipsoids, self._Us)
+        # ]
+
+        Js = [cp.Variable((4, 4), PSD=True) for _ in self._disks]
+        J_sum = cp.Variable((4, 4), PSD=True)
+
+        return (
+            psd_constraints
+            + [
+                J_sum == cp.sum(Js),
+                J[3, 3] == J_sum[3, 3],
+                J[:3, 3] == J_sum[:3, 3],
+                J[:3, :3] << J[:3, :3],
+            ]
+            + [
+                c
+                for J, disk in zip(Js, self._disks)
+                for c in disk.must_realize(J, eps=0)
+            ]
+        )
 
     def transform(self, rotation=None, translation=None):
         rotation, translation = clean_transform(

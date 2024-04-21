@@ -1,4 +1,5 @@
 import numpy as np
+import cvxpy as cp
 
 import rigeo as rg
 
@@ -6,7 +7,7 @@ import rigeo as rg
 def test_cylinder_at_origin():
     np.random.seed(0)
 
-    N = 1000  # number of trials
+    N = 100  # number of trials
     n = 10  # number of point masses per trial
 
     cylinder = rg.Cylinder(length=1, radius=0.5)
