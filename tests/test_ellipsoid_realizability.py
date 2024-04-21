@@ -1,10 +1,8 @@
 import numpy as np
 import cvxpy as cp
+from spatialmath.base import roty
 
 import rigeo as rg
-
-
-# TODO need some tests with rotated cylinders
 
 
 def test_disk_can_realize():
@@ -31,6 +29,20 @@ def test_disk_can_realize():
     assert not disk.can_realize(params)
 
 
+def test_line_segment_can_realize():
+    segment = rg.Ellipsoid(half_extents=[0, 0, 1])
+
+    points = np.array([[0, 0, 1], [0, 0, -1]])
+    masses = np.ones(2)
+    params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+    assert segment.can_realize(params)
+
+    points = np.array([[0, 0, 1.1], [0, 0, -1]])
+    masses = np.ones(2)
+    params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+    assert not segment.can_realize(params)
+
+
 def test_disk_can_realize_translated():
     disk = rg.Ellipsoid(half_extents=[0, 1, 1], center=[1, 0, 0])
 
@@ -40,6 +52,20 @@ def test_disk_can_realize_translated():
     assert disk.can_realize(params)
 
     points = np.array([[0, 0, 0.5], [0, 0, -0.5], [0, 0.5, 0], [0, -0.5, 0]])
+    masses = np.ones(4)
+    params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+    assert not disk.can_realize(params)
+
+
+def test_disk_can_realize_rotated():
+    disk = rg.Ellipsoid(half_extents=[0, 1, 1], rotation=roty(np.pi / 4))
+
+    points = np.array([[0.5, 0, 0.5], [-0.5, 0, -0.5], [0, 1, 0], [0, -1, 0]])
+    masses = np.ones(4)
+    params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+    assert disk.can_realize(params)
+
+    points = np.array([[1, 0, 1], [-1, 0, -1], [0, 1, 0], [0, -1, 0]])
     masses = np.ones(4)
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
     assert not disk.can_realize(params)

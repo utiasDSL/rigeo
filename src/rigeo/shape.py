@@ -1288,7 +1288,7 @@ class Cylinder(Shape):
         disk2 = Ellipsoid(
             half_extents=disk_extents, center=disk_centers[1], rotation=self.rotation
         )
-        self._disks = [disk1, disk2]
+        self.disks = [disk1, disk2]
 
     @property
     def longitudinal_axis(self):
@@ -1339,16 +1339,10 @@ class Cylinder(Shape):
         #     ]
         # )
 
-        Js = [cp.Variable((4, 4), PSD=True) for _ in self._disks]
-        J_sum = cp.Variable((4, 4), PSD=True)
+        J = cp.Variable((4, 4), PSD=True)
 
         objective = cp.Minimize([0])  # feasibility problem
-        constraints = [
-            J_sum == cp.sum(Js),
-            params.mass == J_sum[3, 3],
-            params.h == J_sum[:3, 3],
-            params.H << J_sum[:3, :3],
-        ] + [c for J, disk in zip(Js, self._disks) for c in disk.must_realize(J, eps=0)]
+        constraints = self.must_realize(J) + [J == params.J]
         problem = cp.Problem(objective, constraints)
         problem.solve(**kwargs)
         return problem.status == "optimal"
@@ -1360,7 +1354,7 @@ class Cylinder(Shape):
         #     for E, U in zip(self._ellipsoids, self._Us)
         # ]
 
-        Js = [cp.Variable((4, 4), PSD=True) for _ in self._disks]
+        Js = [cp.Variable((4, 4), PSD=True) for _ in self.disks]
         J_sum = cp.Variable((4, 4), PSD=True)
 
         return (
@@ -1369,11 +1363,11 @@ class Cylinder(Shape):
                 J_sum == cp.sum(Js),
                 J[3, 3] == J_sum[3, 3],
                 J[:3, 3] == J_sum[:3, 3],
-                J[:3, :3] << J[:3, :3],
+                J[:3, :3] << J_sum[:3, :3],
             ]
             + [
                 c
-                for J, disk in zip(Js, self._disks)
+                for J, disk in zip(Js, self.disks)
                 for c in disk.must_realize(J, eps=0)
             ]
         )
@@ -1530,23 +1524,49 @@ class Capsule(Shape):
         if not params.consistent(eps=eps):
             return False
 
-        Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
+        J = cp.Variable((4, 4), PSD=True)
 
         objective = cp.Minimize([0])  # feasibility problem
-        constraints = [params.J == cp.sum(Js)] + [
-            c for J, shape in zip(Js, self._shapes) for c in shape.must_realize(J)
-        ]
+        constraints = self.must_realize(J) + [J == params.J]
         problem = cp.Problem(objective, constraints)
-        problem.solver(**kwargs)
+        problem.solve(**kwargs)
         return problem.status == "optimal"
+
+        # Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
+        #
+        # objective = cp.Minimize([0])  # feasibility problem
+        # constraints = [params.J == cp.sum(Js)] + [
+        #     c for J, shape in zip(Js, self._shapes) for c in shape.must_realize(J)
+        # ]
+        # problem = cp.Problem(objective, constraints)
+        # problem.solver(**kwargs)
+        # return problem.status == "optimal"
 
     def must_realize(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-        Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
-        # TODO should eps be passed along to the shapes?
-        return psd_constraints + [
-            c for J, shape in zip(Js, self._shapes) for c in shape.must_realize(J)
-        ]
+        # Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
+        #
+        # return psd_constraints + [
+        #     c for J, shape in zip(Js, self._shapes) for c in shape.must_realize(J)
+        # ]
+
+        Js = [cp.Variable((4, 4), PSD=True) for _ in self.caps]
+        J_sum = cp.Variable((4, 4), PSD=True)
+
+        return (
+            psd_constraints
+            + [
+                J_sum == cp.sum(Js),
+                J[3, 3] == J_sum[3, 3],
+                J[:3, 3] == J_sum[:3, 3],
+                J[:3, :3] << J_sum[:3, :3],
+            ]
+            + [
+                c
+                for J, cap in zip(Js, self.caps)
+                for c in cap.must_realize(J, eps=0)
+            ]
+        )
 
     def aabb(self):
         points = np.vstack([cap.aabb().vertices for cap in self.caps])
