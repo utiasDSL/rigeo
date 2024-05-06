@@ -21,6 +21,7 @@ USE_CYLINDER_TRACE_REALIZABILITY_CONSTRAINTS = False
 
 USE_ELLIPSOID_TRACE_REALIZABILITY_CONSTRAINTS = False
 
+
 def _inv_with_zeros(a, tol=1e-8):
     """Invert an array that may contain zeros.
 

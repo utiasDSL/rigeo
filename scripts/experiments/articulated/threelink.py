@@ -43,13 +43,19 @@ def sinusoidal_trajectory(t):
 
 
 def main():
+    parser = argparse.ArgumentParser()
+    parser.add_argument(
+        "shape", help="Which link shape to use.", choices=["box", "cylinder"]
+    )
+    args = parser.parse_args()
+
     np.set_printoptions(suppress=True, precision=6)
     np.random.seed(SEED)
 
     # compile the URDF
     xacro_doc = XacroDoc.from_package_file(
         package_name="rigeo",
-        relative_path="urdf/threelink.urdf.xacro",
+        relative_path=f"urdf/threelink_{args.shape}.urdf.xacro",
     )
 
     # load Pinocchio model
@@ -127,7 +133,6 @@ def main():
     # params_nom = prob.solve(name="nominal")
     # params_poly = prob.solve(shapes=boxes, name="poly")
     # params_ell = prob.solve(shapes=ellipsoids, name="ellipsoid")
-
 
     prob = rg.IdentificationProblem(
         As=Ys_train, bs=τs_train, γ=REGULARIZATION_COEFF, ε=PIM_EPS, solver=SOLVER

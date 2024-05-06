@@ -18,7 +18,6 @@ def _hppfcl_to_shape(geom):
 
     if type_ == hppfcl.hppfcl.NODE_TYPE.GEOM_CONVEX:
         raise NotImplementedError("Mesh is not yet supported.")
-        pass
     elif type_ == hppfcl.hppfcl.NODE_TYPE.GEOM_BOX:
         return Box(half_extents=geom.halfSide)
     elif type_ == hppfcl.hppfcl.NODE_TYPE.GEOM_SPHERE:
