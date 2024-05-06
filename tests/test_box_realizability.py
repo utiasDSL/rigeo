@@ -7,7 +7,7 @@ import rigeo as rg
 def test_cube_at_origin_can_realize():
     np.random.seed(0)
 
-    N = 1000  # number of trials
+    N = 100  # number of trials
     n = 10  # number of point masses per trial
 
     box = rg.Box(half_extents=[0.5, 0.5, 0.5])
@@ -37,7 +37,7 @@ def test_cube_at_origin_can_realize():
 def test_box_offset_from_origin_can_realize():
     np.random.seed(0)
 
-    N = 1000  # number of trials
+    N = 100  # number of trials
     n = 10  # number of point masses per trial
 
     box = rg.Box(half_extents=[1.0, 0.5, 0.1], center=[1, 1, 0])

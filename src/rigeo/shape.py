@@ -14,6 +14,13 @@ from rigeo.random import random_weight_vectors, random_points_in_ball
 from rigeo.inertial import InertialParameters
 
 
+# set to True to use experimental trace constraints for box and cylinder
+# realizability, respectively
+USE_BOX_TRACE_REALIZABILITY_CONSTRAINTS = False
+USE_CYLINDER_TRACE_REALIZABILITY_CONSTRAINTS = False
+
+USE_ELLIPSOID_TRACE_REALIZABILITY_CONSTRAINTS = False
+
 def _inv_with_zeros(a, tol=1e-8):
     """Invert an array that may contain zeros.
 
@@ -534,16 +541,10 @@ class ConvexPolyhedron(Shape):
         if self.nv == 4:
             return self._can_realize_tetrahedron(params, tol=0)  # TODO fix tol
 
-        Vs = np.array([np.outer(v, v) for v in self.vertices])
-        ms = cp.Variable(self.nv)
+        J = cp.Variable((4, 4), PSD=True)
 
         objective = cp.Minimize([0])  # feasibility problem
-        constraints = [
-            ms >= 0,
-            params.mass == cp.sum(ms),
-            params.h == ms.T @ self.vertices,
-            params.H << cp.sum([μ * V for μ, V in zip(ms, Vs)]),
-        ]
+        constraints = self.must_realize(J) + [J == params.J]
         problem = cp.Problem(objective, constraints)
         problem.solve(**kwargs)
         return problem.status == "optimal"
@@ -808,7 +809,9 @@ class Box(ConvexPolyhedron):
         return ConvexPolyhedron.from_vertices(self.vertices)
 
     def can_realize(self, params, eps=0, **kwargs):
-        # assert eps >= 0, "Numerical tolerance cannot be negative."
+        if not USE_BOX_TRACE_REALIZABILITY_CONSTRAINTS:
+            return super().can_realize(params, eps=eps, **kwargs)
+
         if not params.consistent(eps=eps):
             return False
         return np.all(
@@ -819,6 +822,9 @@ class Box(ConvexPolyhedron):
         )
 
     def must_realize(self, param_var, eps=0):
+        if not USE_BOX_TRACE_REALIZABILITY_CONSTRAINTS:
+            return super().must_realize(param_var, eps=eps)
+
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
         return psd_constraints + [
             cp.trace(U.T @ J @ U @ E.Q) >= 0 for E, U in zip(self._ellipsoids, self._Us)
@@ -988,18 +994,11 @@ class Ellipsoid(Shape):
         """
         return _Q_matrix(self.S, self.center)
 
-        # Q = np.zeros((self.dim + 1, self.dim + 1))
-        # Q[: self.dim, : self.dim] = -self.S
-        # Q[: self.dim, self.dim] = self.S @ self.center
-        # Q[self.dim, : self.dim] = Q[: self.dim, self.dim]
-        # Q[self.dim, self.dim] = 1 - self.center @ self.S @ self.center
-        # return Q
-
-    def Q_degenerate(self):
+    def _Q_degenerate(self):
         zero_mask = np.isclose(self.half_extents, 0)
 
         # non-zero directions treated normally
-        nonzero_axes = self.half_extents[~zero_mask] * self.rotation[:, ~zero_mask]
+        nonzero_axes = self.half_extents_inv[~zero_mask] * self.rotation[:, ~zero_mask]
         nonzero_Q = _Q_matrix(nonzero_axes @ nonzero_axes.T, self.center)
 
         # zero directions must have no spread in the mass distribution
@@ -1007,6 +1006,21 @@ class Ellipsoid(Shape):
         zero_Q = _Q_matrix(zero_axes @ zero_axes.T, self.center, bound=0)
 
         return nonzero_Q, zero_Q
+
+    def _QV_degenerate(self):
+        zero_mask = np.isclose(self.half_extents, 0)
+
+        # Q matrix in the lower-dimensional space
+        Sr = np.diag(self.half_extents_inv[~zero_mask] ** 2)
+        Qr = _Q_matrix(S=Sr, c=np.zeros(self.rank))
+
+        # V matrix projects lower-dimensional J up to 3D space
+        V = np.zeros((4, self.rank + 1))
+        V[:3, :-1] = self.rotation[:, ~zero_mask]
+        V[:3, -1] = self.center
+        V[3, -1] = 1
+
+        return Qr, V
 
     def is_degenerate(self):
         """Check if the ellipsoid is degenerate.
@@ -1105,7 +1119,9 @@ class Ellipsoid(Shape):
 
         # degenerate case requires checking Q matrices in the zero and non-zero
         # length directions separately
-        nonzero_Q, zero_Q = self.Q_degenerate()
+        # NOTE we do not check realizability for lower-dimensional ellipsoids;
+        # it is supported in must_realize to facilitate building other shapes
+        nonzero_Q, zero_Q = self._Q_degenerate()
         return np.trace(nonzero_Q @ params.J) >= 0 and np.isclose(
             np.trace(zero_Q @ params.J), 0
         )
@@ -1116,14 +1132,21 @@ class Ellipsoid(Shape):
         ), "Shape must be 3-dimensional to realize inertial parameters."
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
 
+        # don't need to do anything special for non-degenerate case
         if not self.is_degenerate():
             return psd_constraints + [cp.trace(self.Q @ J) >= 0]
 
-        nonzero_Q, zero_Q = self.Q_degenerate()
-        return psd_constraints + [
-            cp.trace(nonzero_Q @ J) >= 0,
-            cp.trace(zero_Q @ J) == 0,
-        ]
+        if USE_ELLIPSOID_TRACE_REALIZABILITY_CONSTRAINTS:
+            nonzero_Q, zero_Q = self._Q_degenerate()
+            return psd_constraints + [
+                cp.trace(nonzero_Q @ J) >= 0,
+                cp.trace(zero_Q @ J) == 0,
+            ]
+        else:
+            r = self.rank
+            Jr = cp.Variable((r + 1, r + 1), PSD=True)
+            Qr, V = self._QV_degenerate()
+            return psd_constraints + [cp.trace(Qr @ Jr) >= 0, J == V @ Jr @ V.T]
 
     def mbe(self, rcond=None, sphere=False):
         if not sphere:
@@ -1332,12 +1355,14 @@ class Cylinder(Shape):
     def can_realize(self, params, eps=0, **kwargs):
         if not params.consistent(eps=eps):
             return False
-        # return np.all(
-        #     [
-        #         np.trace(U.T @ params.J @ U @ E.Q) >= 0
-        #         for E, U in zip(self._ellipsoids, self._Us)
-        #     ]
-        # )
+
+        if USE_CYLINDER_TRACE_REALIZABILITY_CONSTRAINTS:
+            return np.all(
+                [
+                    np.trace(U.T @ params.J @ U @ E.Q) >= 0
+                    for E, U in zip(self._ellipsoids, self._Us)
+                ]
+            )
 
         J = cp.Variable((4, 4), PSD=True)
 
@@ -1349,10 +1374,12 @@ class Cylinder(Shape):
 
     def must_realize(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-        # return psd_constraints + [
-        #     cp.trace(U.T @ params.J @ U @ E.Q) >= 0
-        #     for E, U in zip(self._ellipsoids, self._Us)
-        # ]
+
+        if USE_CYLINDER_TRACE_REALIZABILITY_CONSTRAINTS:
+            return psd_constraints + [
+                cp.trace(U.T @ params.J @ U @ E.Q) >= 0
+                for E, U in zip(self._ellipsoids, self._Us)
+            ]
 
         Js = [cp.Variable((4, 4), PSD=True) for _ in self.disks]
         J_sum = cp.Variable((4, 4), PSD=True)
@@ -1561,11 +1588,7 @@ class Capsule(Shape):
                 J[:3, 3] == J_sum[:3, 3],
                 J[:3, :3] << J_sum[:3, :3],
             ]
-            + [
-                c
-                for J, cap in zip(Js, self.caps)
-                for c in cap.must_realize(J, eps=0)
-            ]
+            + [c for J, cap in zip(Js, self.caps) for c in cap.must_realize(J, eps=0)]
         )
 
     def aabb(self):

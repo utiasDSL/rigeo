@@ -56,3 +56,37 @@ def test_cylinder_at_origin():
     masses = np.ones(8)
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
     assert not cylinder.can_realize(params)
+
+
+def test_cylinder_must_realize():
+    cylinder = rg.Cylinder(length=1, radius=0.5)
+
+    J = cp.Variable((4, 4), PSD=True)
+    m = J[3, 3]
+
+    objective = cp.Maximize(J[0, 0])
+
+    # need a mass constraint to bound the problem
+    constraints = cylinder.must_realize(J) + [m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.25)
+
+    objective = cp.Maximize(J[2, 2])
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 0.25)
+
+    # now try offset from the origin
+    cylinder = rg.Cylinder(length=1, radius=0.5, center=[1, 0, 0])
+
+    J = cp.Variable((4, 4), PSD=True)
+    m = J[3, 3]
+
+    objective = cp.Maximize(J[0, 0])
+    constraints = cylinder.must_realize(J) + [m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+
+    # optimum is obtained by putting the CoM at the maximum x-position
+    assert np.isclose(objective.value, 1.5**2)

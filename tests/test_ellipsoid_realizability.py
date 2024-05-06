@@ -28,6 +28,19 @@ def test_disk_can_realize():
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
     assert not disk.can_realize(params)
 
+    # different sized disks
+    disk = rg.Ellipsoid(half_extents=[0, 0.5, 0.5])
+    points = np.array([[0, 0, 0.5], [0, 0, -0.5], [0, 0.5, 0], [0, -0.5, 0]])
+    masses = np.ones(4)
+    params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+    assert disk.can_realize(params)
+
+    disk = rg.Ellipsoid(half_extents=[0, 2, 2])
+    points = np.array([[0, 0, 2], [0, 0, -2], [0, 2, 0], [0, -2, 0]])
+    masses = np.ones(4)
+    params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+    assert disk.can_realize(params)
+
 
 def test_line_segment_can_realize():
     segment = rg.Ellipsoid(half_extents=[0, 0, 1])
