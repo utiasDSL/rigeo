@@ -9,6 +9,7 @@ import time
 import numpy as np
 import cvxpy as cp
 import colorama
+import tqdm
 
 import rigeo as rg
 
@@ -19,11 +20,11 @@ import IPython
 TRAIN_TEST_SPLIT = 0.5
 
 # train only with data in the x-y plane
-TRAIN_WITH_PLANAR_ONLY = True
+TRAIN_WITH_PLANAR_ONLY = False
 
 # use the overall bounding box rather than tight convex hull of the body's
 # shape -- this is equivalent to just having a box shape with the given params
-USE_BOUNDING_BOX = True
+USE_BOUNDING_BOX = False
 
 SHUFFLE = True
 
@@ -83,24 +84,49 @@ class ErrorSet:
         print(f"poly lower than ell: {n_poly_lower_than_ell}/{n}")
 
 
+def dict_of_lists(keys):
+    return {key: [] for key in keys}
+
+
+def result_dict():
+    stats = [
+        "riemannian_errors",
+        "validation_errors",
+        "objective_values",
+        "num_iters",
+        "solve_times",
+        "params",
+    ]
+    return {
+        "no_noise": dict_of_lists(stats),
+        "nominal": dict_of_lists(stats),
+        "ellipsoid": dict_of_lists(stats),
+        "polyhedron": dict_of_lists(stats),
+    }
+
+
 def main():
     np.set_printoptions(suppress=True, precision=6)
     np.random.seed(0)
 
     parser = argparse.ArgumentParser()
     parser.add_argument("infile", help="File to load the data from.")
+    parser.add_argument("outfile", help="File to save the results to.")
     args = parser.parse_args()
 
     with open(args.infile, "rb") as f:
         data = pickle.load(f)
 
-    riemannian_errors = ErrorSet("Riemannian error")
-    validation_errors = ErrorSet("Validation error")
-    objective_values = ErrorSet("Objective value")
-    num_iterations = ErrorSet("Num iterations")
-    solve_times = ErrorSet("Solve time")
+    # riemannian_errors = ErrorSet("Riemannian error")
+    # validation_errors = ErrorSet("Validation error")
+    # objective_values = ErrorSet("Objective value")
+    # num_iterations = ErrorSet("Num iterations")
+    # solve_times = ErrorSet("Solve time")
 
-    for i in range(data["num_obj"]):
+    results = result_dict()
+    results["data"] = data  # save the data as well
+
+    for i in tqdm.tqdm(range(data["num_obj"])):
         params = data["params"][i]
         vertices = data["vertices"][i]
 
@@ -187,72 +213,129 @@ def main():
         params_poly = res_poly.params[0]
         params_ell = res_ell.params[0]
 
-        riemannian_errors.no_noise.append(
+        # parameter values
+        results["no_noise"]["params"].append(params_noiseless)
+        results["nominal"]["params"].append(params_nom)
+        results["ellipsoid"]["params"].append(params_ell)
+        results["polyhedron"]["params"].append(params_poly)
+
+        # Riemannian errors
+        results["no_noise"]["riemannian_errors"].append(
             rg.positive_definite_distance(params.J, params_noiseless.J)
         )
-        riemannian_errors.nominal.append(
+        results["nominal"]["riemannian_errors"].append(
             rg.positive_definite_distance(params.J, params_nom.J)
         )
-        riemannian_errors.ellipsoid.append(
+        results["ellipsoid"]["riemannian_errors"].append(
             rg.positive_definite_distance(params.J, params_ell.J)
         )
-        riemannian_errors.polyhedron.append(
+        results["polyhedron"]["riemannian_errors"].append(
             rg.positive_definite_distance(params.J, params_poly.J)
         )
 
-        validation_errors.no_noise.append(
+        # validation errors
+        results["no_noise"]["validation_errors"].append(
             rg.validation_rmse(Ys_test, ws_test, params_noiseless.vec)
         )
-        validation_errors.nominal.append(
+        results["nominal"]["validation_errors"].append(
             rg.validation_rmse(Ys_test, ws_test, params_nom.vec)
         )
-        validation_errors.ellipsoid.append(
+        results["ellipsoid"]["validation_errors"].append(
             rg.validation_rmse(Ys_test, ws_test, params_ell.vec)
         )
-        validation_errors.polyhedron.append(
+        results["polyhedron"]["validation_errors"].append(
             rg.validation_rmse(Ys_test, ws_test, params_poly.vec)
         )
 
-        objective_values.no_noise.append(res_noiseless.objective)
-        objective_values.nominal.append(res_nom.objective)
-        objective_values.polyhedron.append(res_poly.objective)
-        objective_values.ellipsoid.append(res_ell.objective)
+        # objective values
+        results["no_noise"]["objective_values"].append(res_noiseless.objective)
+        results["nominal"]["objective_values"].append(res_nom.objective)
+        results["ellipsoid"]["objective_values"].append(res_ell.objective)
+        results["polyhedron"]["objective_values"].append(res_poly.objective)
 
-        num_iterations.no_noise.append(res_noiseless.iters)
-        num_iterations.nominal.append(res_nom.iters)
-        num_iterations.polyhedron.append(res_poly.iters)
-        num_iterations.ellipsoid.append(res_ell.iters)
+        # number of iterations
+        results["no_noise"]["num_iters"].append(res_noiseless.iters)
+        results["nominal"]["num_iters"].append(res_nom.iters)
+        results["ellipsoid"]["num_iters"].append(res_ell.iters)
+        results["polyhedron"]["num_iters"].append(res_poly.iters)
 
-        solve_times.no_noise.append(res_noiseless.solve_time)
-        solve_times.nominal.append(res_nom.solve_time)
-        solve_times.polyhedron.append(res_poly.solve_time)
-        solve_times.ellipsoid.append(res_ell.solve_time)
+        # solve times
+        results["no_noise"]["solve_times"].append(res_noiseless.solve_time)
+        results["nominal"]["solve_times"].append(res_nom.solve_time)
+        results["ellipsoid"]["solve_times"].append(res_ell.solve_time)
+        results["polyhedron"]["solve_times"].append(res_poly.solve_time)
 
-        s = yellow(f"Problem {i + 1}" + "\n==========")
-        print("\n" + s)
-        print(f"nv = {vertices.shape[0]}")
-        print()
-        riemannian_errors.print(index=i)
-        print()
-        validation_errors.print(index=i)
-        print()
-        objective_values.print(index=i)
-        print()
-        num_iterations.print(index=i)
-        print()
-        solve_times.print(index=i)
+        # riemannian_errors.no_noise.append(
+        #     rg.positive_definite_distance(params.J, params_noiseless.J)
+        # )
+        # riemannian_errors.nominal.append(
+        #     rg.positive_definite_distance(params.J, params_nom.J)
+        # )
+        # riemannian_errors.ellipsoid.append(
+        #     rg.positive_definite_distance(params.J, params_ell.J)
+        # )
+        # riemannian_errors.polyhedron.append(
+        #     rg.positive_definite_distance(params.J, params_poly.J)
+        # )
 
-    s = green("Medians\n=======")
-    print("\n" + s + "\n")
-    riemannian_errors.print_average()
-    print()
-    validation_errors.print_average()
-    print()
-    objective_values.print_average()
-    print()
-    num_iterations.print_average()
-    print()
-    solve_times.print_average()
+        # validation_errors.no_noise.append(
+        #     rg.validation_rmse(Ys_test, ws_test, params_noiseless.vec)
+        # )
+        # validation_errors.nominal.append(
+        #     rg.validation_rmse(Ys_test, ws_test, params_nom.vec)
+        # )
+        # validation_errors.ellipsoid.append(
+        #     rg.validation_rmse(Ys_test, ws_test, params_ell.vec)
+        # )
+        # validation_errors.polyhedron.append(
+        #     rg.validation_rmse(Ys_test, ws_test, params_poly.vec)
+        # )
+
+        # objective_values.no_noise.append(res_noiseless.objective)
+        # objective_values.nominal.append(res_nom.objective)
+        # objective_values.polyhedron.append(res_poly.objective)
+        # objective_values.ellipsoid.append(res_ell.objective)
+        #
+        # num_iterations.no_noise.append(res_noiseless.iters)
+        # num_iterations.nominal.append(res_nom.iters)
+        # num_iterations.polyhedron.append(res_poly.iters)
+        # num_iterations.ellipsoid.append(res_ell.iters)
+        #
+        # solve_times.no_noise.append(res_noiseless.solve_time)
+        # solve_times.nominal.append(res_nom.solve_time)
+        # solve_times.polyhedron.append(res_poly.solve_time)
+        # solve_times.ellipsoid.append(res_ell.solve_time)
+
+        # s = yellow(f"Problem {i + 1}" + "\n==========")
+        # print("\n" + s)
+        # print(f"nv = {vertices.shape[0]}")
+        # print()
+        # riemannian_errors.print(index=i)
+        # print()
+        # validation_errors.print(index=i)
+        # print()
+        # objective_values.print(index=i)
+        # print()
+        # num_iterations.print(index=i)
+        # print()
+        # solve_times.print(index=i)
+
+    # s = green("Medians\n=======")
+    # print("\n" + s + "\n")
+    # riemannian_errors.print_average()
+    # print()
+    # validation_errors.print_average()
+    # print()
+    # objective_values.print_average()
+    # print()
+    # num_iterations.print_average()
+    # print()
+    # solve_times.print_average()
+
+    # save the results
+    with open(args.outfile, "wb") as f:
+        pickle.dump(results, f)
+    print(f"Saved results to {args.outfile}")
 
 
 main()

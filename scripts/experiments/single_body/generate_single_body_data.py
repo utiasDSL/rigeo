@@ -9,18 +9,14 @@ import rigeo as rg
 
 import IPython
 
-# NOTE: IMPORTANT: scale wrench so that angular part is more reasonable
-
-
-NUM_OBJ = 10
+NUM_OBJ = 100
 NUM_PRIMITIVE_BOUNDS = [10, 25]
 BOUNDING_BOX_HALF_EXTENTS = [0.5, 0.5, 0.5]
 MASS_BOUNDS = [0.1, 1.0]
-# OFFSET = np.array([0.2, 0, 0])
 OFFSET = np.array([0, 0, 0])
 
 # noise
-VEL_NOISE_WIDTH = 0.1
+VEL_NOISE_WIDTH = 0.05
 VEL_NOISE_BIAS = 0.1
 
 WRENCH_NOISE_WIDTH = 0
