@@ -33,7 +33,7 @@ def schur(A, B, C):
     return cp.bmat([[A, B], [B.T, C]])
 
 
-def _pim_sum_vec_matrices():
+def pim_sum_vec_matrices():
     """Generate the matrices A_i such that J == sum(A_i * θ_i)"""
     As = [np.zeros((4, 4)) for _ in range(10)]
     As[0][3, 3] = 1  # mass
@@ -96,7 +96,7 @@ def pim_must_equal_vec(θ):
         The corresponding pseudo-inertia matrix.
     """
     assert θ.shape == (10,)
-    return cp.sum([A * p for A, p in zip(_pim_sum_vec_matrices(), θ)])
+    return cp.sum([A * p for A, p in zip(pim_sum_vec_matrices(), θ)])
 
 
 def pim_must_equal_param_var(param_var, eps):
@@ -108,10 +108,12 @@ def pim_must_equal_param_var(param_var, eps):
     else:
         raise ValueError(f"Parameter variable has unexpected shape {param_var.shape}")
 
-    return J, [J == J.T, J >> eps * np.eye(4)]
+    return J, pim_psd(J, eps=eps)
 
 
 # TODO
-def pim_psd(J, ε=0):
-    assert ε >= 0
-    return [J == J.T, J >> ε * np.eye(4)]
+def pim_psd(J, eps=0):
+    """Generate cvxpy constraints that ensure J is symmetric positive definite."""
+    assert J.shape == (4, 4)
+    assert eps >= 0
+    return [J == J.T, J >> eps * np.eye(4)]

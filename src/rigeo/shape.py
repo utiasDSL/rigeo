@@ -441,6 +441,7 @@ class ConvexPolyhedron(Shape):
         )
 
     def random_points(self, shape=1):
+        # NOTE: this is not uniform sampling!
         if np.isscalar(shape):
             shape = (shape,)
         full_shape = tuple(shape) + (self.nv,)
@@ -726,6 +727,18 @@ class Box(ConvexPolyhedron):
         """Length of the box's diagonal."""
         return 2 * np.linalg.norm(self.half_extents)
 
+    def random_points(self, shape=1):
+        """These random points are *uniformly distributed* within the box."""
+        if np.isscalar(shape):
+            shape = (shape,)
+        n = np.product(shape)
+
+        points = 2 * (np.random.random((n, 3)) - 0.5) * self.half_extents
+        points = (self.rotation @ points.T).T + self.center
+        if shape == (1,):
+            return np.squeeze(points)
+        return points.reshape(shape + (3,))
+
     def grid(self, n):
         """Generate a set of points evenly spaced in the box.
 
@@ -999,6 +1012,7 @@ class Ellipsoid(Shape):
         zero_mask = np.isclose(self.half_extents, 0)
 
         # non-zero directions treated normally
+        # TODO is this correct?
         nonzero_axes = self.half_extents_inv[~zero_mask] * self.rotation[:, ~zero_mask]
         nonzero_Q = _Q_matrix(nonzero_axes @ nonzero_axes.T, self.center)
 
@@ -1613,6 +1627,7 @@ class Capsule(Shape):
         mbb = self.mbb()
         n = np.product(shape)
 
+        # TODO this loop could last a long time in degenerate cases
         full = np.zeros(n, dtype=bool)
         points = np.zeros((n, 3))
         m = n
@@ -1622,6 +1637,10 @@ class Capsule(Shape):
 
             # check if they are contained in the actual shape
             c = self.contains(candidates)
+
+            # short-circuit if no points are contained
+            if not c.any():
+                continue
 
             # use the points that are contained, storing them and marking them
             # full
@@ -1746,6 +1765,8 @@ def mbe_of_points(points, rcond=None, sphere=False, solver=None):
 
     N = null_space((R @ V).T, rcond=rcond)
     rotation = np.hstack((R @ V, N))
+    # if np.linalg.det(rotation) < 0:
+    #     rotation = -rotation  # TODO
     center = R @ np.linalg.lstsq(A.value, -b.value, rcond=rcond)[0] + r
 
     return Ellipsoid(half_extents=half_extents, rotation=rotation, center=center)

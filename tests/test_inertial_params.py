@@ -31,8 +31,8 @@ def test_addition():
 def test_representations():
     mass = 1.0
     h = np.array([1, 2, 3])
-    Ic = rg.Box(half_extents=[0.5, 0.5, 0.5]).uniform_density_params(mass).I
-    H = rg.I2H(Ic) + np.outer(h, h) / mass
+    Hc = rg.Box(half_extents=[1, 0.5, 0.25]).uniform_density_params(mass).H
+    H = Hc + np.outer(h, h) / mass
 
     p1 = rg.InertialParameters(mass=mass, h=h, H=H)
     p2 = rg.InertialParameters.from_vec(p1.vec)
@@ -42,6 +42,16 @@ def test_representations():
     assert p2.is_same(p1)
     assert p3.is_same(p1)
     assert p4.is_same(p1)
+
+
+def test_pim_sum_vec_matrices():
+    np.random.seed(0)
+    As = rg.pim_sum_vec_matrices()
+
+    for _ in range(10):
+        params = rg.InertialParameters.random()
+        J = sum([A * p for A, p in zip(As, params.vec)])
+        assert np.allclose(J, params.J)
 
 
 def test_transform():

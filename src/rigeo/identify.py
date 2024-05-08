@@ -64,16 +64,16 @@ def least_squares_objective(θs, As, bs, W0=None):
     : cxvpy.Expression
         The cxvpy expression for the objective.
     """
+    A = np.vstack(As)
+    b = np.concatenate(bs)
+    θ = cp.hstack(θs)
+
     if W0 is None:
-        W0 = np.eye(bs.shape[1])
+        return cp.sum_squares(A @ θ - b)
 
     # psd_wrap fixes an occasional internal scipy error
     # https://github.com/cvxpy/cvxpy/issues/1421#issuecomment-865977139
     W = cp.psd_wrap(np.kron(np.eye(bs.shape[0]), W0))
-
-    A = np.vstack(As)
-    b = np.concatenate(bs)
-    θ = cp.hstack(θs)
     return cp.quad_form(A @ θ - b, W)
 
 
@@ -153,11 +153,13 @@ class IdentificationProblem:
         Js = [pim_must_equal_vec(θ) for θ in θs]
 
         # objective
-        J0s = [body.params.J for body in bodies]
-        regularizer = entropic_regularizer(Js, J0s)
-
         lstsq = least_squares_objective(θs, self.As, self.bs)
-        cost = 0.5 / self.no * lstsq + self.γ * regularizer
+        if self.γ > 0:
+            J0s = [body.params.J for body in bodies]
+            regularizer = entropic_regularizer(Js, J0s)
+            cost = 0.5 / self.no * lstsq + self.γ * regularizer
+        else:
+            cost = 0.5 / self.no * lstsq
         objective = cp.Minimize(cost)
 
         # constraints
@@ -167,10 +169,6 @@ class IdentificationProblem:
                 constraints.extend(body.must_realize(J))
 
         problem = cp.Problem(objective, constraints)
-
-        # no warm start because we don't want the different problems
-        # influencing each other
-        # solve_kwargs = {"solver": self.solver, "warm_start": False, **kwargs}
 
         t0 = time.time()
         problem.solve(**self.solve_kwargs)

@@ -5,6 +5,7 @@ from rigeo.constraint import (
     pim_must_equal_vec,
     pim_must_equal_param_var,
     pim_psd,
+    pim_sum_vec_matrices,
 )
 from rigeo.experiment import (
     WRL,

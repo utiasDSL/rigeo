@@ -74,3 +74,34 @@ def test_rotation():
     assert np.allclose(box3.half_extents, box1.half_extents)
     assert np.allclose(box3.center, box1.center)
     assert np.allclose(box3.vertices, box2.vertices)
+
+
+def test_random_points():
+    box = rg.Box.cube(half_extent=0.5)
+    points = box.random_points(10)
+    assert points.shape == (10, 3)
+    assert box.contains(points).all()
+
+    point = box.random_points()
+    assert point.shape == (3,)
+    assert box.contains(point)
+
+    box = rg.Box(half_extents=[0.5, 1, 2])
+    points = box.random_points(10)
+    assert box.contains(points).all()
+
+    # translated from origin
+    box = rg.Box(half_extents=[0.5, 1, 2], center=[10, 2, 3])
+    points = box.random_points(10)
+    assert box.contains(points).all()
+
+    # translated and rotated
+    C = rotz(np.pi / 4)
+    box = rg.Box(half_extents=[0.5, 1, 2], center=[10, 2, 5], rotation=C)
+    points = box.random_points(10)
+    assert box.contains(points).all()
+
+    # multi-dimensional set of points
+    points = box.random_points((10, 5))
+    assert points.shape == (10, 5, 3)
+    assert box.contains(points.reshape((50, 3))).all()

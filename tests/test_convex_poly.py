@@ -114,8 +114,10 @@ def test_must_contain():
 def test_random_points():
     np.random.seed(0)
 
+    # up-cast box to general poly so specialized random_points method for boxes
+    # not used
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    box = rg.Box(half_extents=[2, 1, 0.5], center=[1, 0, 1], rotation=C)
+    box = rg.Box(half_extents=[2, 1, 0.5], center=[1, 0, 1], rotation=C).as_poly()
 
     # one point
     point = box.random_points()
