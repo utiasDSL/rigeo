@@ -27,17 +27,19 @@ TRAIN_TEST_SPLIT = 0.5
 
 SHUFFLE = True
 REGULARIZATION_COEFF = 0
-# PIM_EPS = 1e-4
-PIM_EPS = 0
+PIM_EPS = 1e-4
+# PIM_EPS = 0
 SOLVER = cp.MOSEK
 
 
-def dict_of_lists(keys):
-    return {key: [] for key in keys}
+def dict_of_lists(list_keys, counter_keys):
+    d1 = {key: [] for key in list_keys}
+    d2 = {key: 0 for key in counter_keys}
+    return {**d1, **d2}
 
 
 def result_dict():
-    stats = [
+    list_keys = [
         "riemannian_errors",
         "validation_errors",
         "objective_values",
@@ -45,11 +47,12 @@ def result_dict():
         "solve_times",
         "params",
     ]
+    counter_keys = ["num_feasible"]
     return {
-        "no_noise": dict_of_lists(stats),
-        "nominal": dict_of_lists(stats),
-        "ellipsoid": dict_of_lists(stats),
-        "polyhedron": dict_of_lists(stats),
+        "no_noise": dict_of_lists(list_keys, counter_keys),
+        "nominal": dict_of_lists(list_keys, counter_keys),
+        "ellipsoid": dict_of_lists(list_keys, counter_keys),
+        "polyhedron": dict_of_lists(list_keys, counter_keys),
     }
 
 
@@ -82,14 +85,19 @@ def main():
     results["num_obj"] = data["num_obj"]
     results["vel_noise_width"] = data["vel_noise_width"]
     results["vel_noise_bias"] = data["vel_noise_bias"]
+    results["wrench_noise_cov"] = data["wrench_noise_cov"]
+    results["wrench_noise_bias"] = data["wrench_noise_bias"]
+
+    Σ = data["wrench_noise_cov"]
+    W = np.linalg.inv(Σ)
 
     for i in tqdm.tqdm(range(data["num_obj"])):
         params = data["params"][i]  # true parameters
         vertices = data["vertices"][i]
 
         if args.bounding_box:
-            # box = data["bounding_box"]
-            box = rg.ConvexPolyhedron.from_vertices(vertices).aabb()
+            box = data["bounding_box"]
+            # box = rg.ConvexPolyhedron.from_vertices(vertices).aabb()
             body = rg.RigidBody(box, params)
             body_mbe = rg.RigidBody(box.mbe(), params)
         else:
@@ -122,8 +130,10 @@ def main():
             As_noisy = np.array(data["obj_data_full"][i]["As_noisy"])[idx, :]
             ws_noisy = np.array(data["obj_data_full"][i]["ws_noisy"])[idx, :]
 
-        Vs_train = Vs_noisy[:n_train]
-        As_train = As_noisy[:n_train]
+        # Vs_train = Vs_noisy[:n_train]
+        # As_train = As_noisy[:n_train]
+        Vs_train = Vs[:n_train]
+        As_train = As[:n_train]
         ws_train = ws_noisy[:n_train]
 
         Ys_train = np.array(
@@ -161,6 +171,7 @@ def main():
             bs=ws_train,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            Σ=Σ,
             solver=SOLVER,
             warm_start=False,
         )
@@ -198,18 +209,18 @@ def main():
             rg.validation_rmse(Ys_test, ws_test, params_noiseless.vec)
         )
         results["nominal"]["validation_errors"].append(
-            rg.validation_rmse(Ys_test, ws_test, params_nom.vec)
+            rg.validation_rmse(Ys_test, ws_test, params_nom.vec, W=None)
         )
         results["ellipsoid"]["validation_errors"].append(
-            rg.validation_rmse(Ys_test, ws_test, params_ell.vec)
+            rg.validation_rmse(Ys_test, ws_test, params_ell.vec, W=None)
         )
         results["polyhedron"]["validation_errors"].append(
-            rg.validation_rmse(Ys_test, ws_test, params_poly.vec)
+            rg.validation_rmse(Ys_test, ws_test, params_poly.vec, W=None)
         )
 
         # if (
         #     results["polyhedron"]["validation_errors"][-1]
-        #     / results["ellipsoid"]["validation_errors"][-1]
+        #     / results["nominal"]["validation_errors"][-1]
         #     > 1.2
         # ):
         #     IPython.embed()
@@ -232,6 +243,15 @@ def main():
         results["ellipsoid"]["solve_times"].append(res_ell.solve_time)
         results["polyhedron"]["solve_times"].append(res_poly.solve_time)
 
+        poly = body.shapes[0]
+        if poly.can_realize(params_nom):
+            results["nominal"]["num_feasible"] += 1
+        if poly.can_realize(params_ell):
+            results["ellipsoid"]["num_feasible"] += 1
+
+        assert poly.can_realize(params_poly)
+        results["polyhedron"]["num_feasible"] += 1
+
     # save the results
     # if args.save:
     #     traj = "planar" if args.planar else "full"
@@ -246,7 +266,7 @@ def main():
 
     with open(args.outfile, "wb") as f:
         pickle.dump(results, f)
-    print(f"Saved results to {outfile}")
+    print(f"Saved results to {args.outfile}")
 
 
 main()

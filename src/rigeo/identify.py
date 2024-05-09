@@ -111,7 +111,7 @@ class IdentificationProblem:
         instance is made available for inspection.
     """
 
-    def __init__(self, As, bs, γ=0, ε=0, **kwargs):
+    def __init__(self, As, bs, Σ=None, γ=0, ε=0, **kwargs):
         assert As.shape[0] == bs.shape[0]
         assert γ >= 0
         assert ε >= 0
@@ -123,6 +123,12 @@ class IdentificationProblem:
 
         self.γ = γ
         self.ε = ε
+
+        # measurement covariance matrix
+        if Σ is not None:
+            self.W0 = np.linalg.inv(Σ)
+        else:
+            self.W0 = None
 
         self.solve_kwargs = kwargs
 
@@ -153,7 +159,7 @@ class IdentificationProblem:
         Js = [pim_must_equal_vec(θ) for θ in θs]
 
         # objective
-        lstsq = least_squares_objective(θs, self.As, self.bs)
+        lstsq = least_squares_objective(θs, self.As, self.bs, W0=self.W0)
         if self.γ > 0:
             J0s = [body.params.J for body in bodies]
             regularizer = entropic_regularizer(Js, J0s)

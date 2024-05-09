@@ -198,8 +198,8 @@ def generate_rigid_body_trajectory2(
     planar=False,
     vel_noise_bias=0,
     vel_noise_width=0,
-    wrench_noise_bias=0,
-    wrench_noise_width=0,
+    wrench_noise_bias=None,
+    wrench_noise_cov=None,
 ):
     """Generate a random trajectory for a rigid body.
 
@@ -276,9 +276,20 @@ def generate_rigid_body_trajectory2(
     As_noisy = (V2_noisy[1:, :] - V2_noisy[:-1, :]) / eval_step
 
     # apply noise to wrench
-    w_noise_raw = np.random.random(size=ws.shape) - 0.5
-    w_noise = wrench_noise_width * w_noise_raw + wrench_noise_bias
-    ws_noisy = ws + w_noise
+    # TODO use normal distribution
+    if wrench_noise_bias is None:
+        wrench_noise_bias = np.zeros(6)
+    if wrench_noise_cov is None:
+        wrench_noise_cov = np.zeros((6, 6))
+    assert wrench_noise_bias.shape == (6,)
+    assert wrench_noise_cov.shape == (6, 6)
+
+    # w_noise_raw = np.random.random(size=ws.shape) - 0.5
+    # w_noise = wrench_noise_width * w_noise_raw + wrench_noise_bias
+    wrench_noise = np.random.multivariate_normal(
+        mean=wrench_noise_bias, cov=wrench_noise_cov, size=ws.shape[0]
+    )
+    ws_noisy = ws + wrench_noise
 
     return {
         "Vs": Vs,

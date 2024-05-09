@@ -108,9 +108,12 @@ def compute_evaluation_times(duration, step=0.1):
     return n, times
 
 
-def validation_rmse(Ys, ws, θ):
+def validation_rmse(Ys, ws, θ, W=None):
     """Compute root mean square wrench error on a validation set."""
+    if W is None:
+        W = np.eye(6)
     error = Ys @ θ - ws
+    # square = np.sum(error @ W * error, axis=1)
     square = np.sum(error**2, axis=1)
     assert square.shape[0] == ws.shape[0]
     mean = np.mean(square)

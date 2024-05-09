@@ -12,15 +12,17 @@ import IPython
 NUM_OBJ = 100
 NUM_PRIMITIVE_BOUNDS = [10, 30]
 BOUNDING_BOX_HALF_EXTENTS = [0.5, 0.5, 0.5]
-MASS_BOUNDS = [0.1, 1.0]
+MASS_BOUNDS = [0.5, 5.0]
 OFFSET = np.array([0, 0, 0])
 
 # noise
 # VEL_NOISE_WIDTH = 0.2
 # VEL_NOISE_BIAS = 0.1
 
-WRENCH_NOISE_WIDTH = 0.5
-WRENCH_NOISE_BIAS = 1
+# TODO should generate the bodies *first*, then keep these constant while
+# adding various amounts of noise
+WRENCH_NOISE_COV = np.diag([1.2, 1.2, 0.5, 0.02, 0.02, 0.03])**2
+WRENCH_NOISE_BIAS = np.array([50, 50, 50, 0, 0, 0])
 
 
 def main():
@@ -33,13 +35,15 @@ def main():
         "-b", "--bias",
         help="Velocity noise bias.",
         type=float,
-        required=True,
+        default=0,
+        # required=True,
     )
     parser.add_argument(
         "-w", "--width",
         help="Velocity noise width.",
         type=float,
-        required=True,
+        default=0,
+        # required=True,
     )
     parser.add_argument(
         "--type",
@@ -49,7 +53,7 @@ def main():
     )
     args = parser.parse_args()
 
-    bounding_box = rg.Box(BOUNDING_BOX_HALF_EXTENTS, center=OFFSET)
+    bounding_box = rg.Box(half_extents=BOUNDING_BOX_HALF_EXTENTS, center=OFFSET)
 
     obj_data_full = []
     obj_data_planar = []
@@ -103,7 +107,7 @@ def main():
             params=params,
             vel_noise_width=args.width,
             vel_noise_bias=args.bias,
-            wrench_noise_width=WRENCH_NOISE_WIDTH,
+            wrench_noise_cov=WRENCH_NOISE_COV,
             wrench_noise_bias=WRENCH_NOISE_BIAS,
             planar=False,
         )
@@ -111,7 +115,7 @@ def main():
             params=params,
             vel_noise_width=args.width,
             vel_noise_bias=args.bias,
-            wrench_noise_width=WRENCH_NOISE_WIDTH,
+            wrench_noise_cov=WRENCH_NOISE_COV,
             wrench_noise_bias=WRENCH_NOISE_BIAS,
             planar=True,
         )
@@ -126,6 +130,8 @@ def main():
         "mass_bounds": MASS_BOUNDS,
         "vel_noise_width": args.width,
         "vel_noise_bias": args.bias,
+        "wrench_noise_cov": WRENCH_NOISE_COV,
+        "wrench_noise_bias": WRENCH_NOISE_BIAS,
         "bounding_box": bounding_box,
         "obj_data_full": obj_data_full,
         "obj_data_planar": obj_data_planar,
