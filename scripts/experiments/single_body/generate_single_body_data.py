@@ -10,17 +10,17 @@ import rigeo as rg
 import IPython
 
 NUM_OBJ = 100
-NUM_PRIMITIVE_BOUNDS = [10, 25]
+NUM_PRIMITIVE_BOUNDS = [10, 30]
 BOUNDING_BOX_HALF_EXTENTS = [0.5, 0.5, 0.5]
 MASS_BOUNDS = [0.1, 1.0]
 OFFSET = np.array([0, 0, 0])
 
 # noise
-VEL_NOISE_WIDTH = 0.05
-VEL_NOISE_BIAS = 0.1
+# VEL_NOISE_WIDTH = 0.2
+# VEL_NOISE_BIAS = 0.1
 
-WRENCH_NOISE_WIDTH = 0
-WRENCH_NOISE_BIAS = 0
+WRENCH_NOISE_WIDTH = 0.5
+WRENCH_NOISE_BIAS = 1
 
 
 def main():
@@ -29,6 +29,18 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("outfile", help="Pickle file to save the data to.")
+    parser.add_argument(
+        "-b", "--bias",
+        help="Velocity noise bias.",
+        type=float,
+        required=True,
+    )
+    parser.add_argument(
+        "-w", "--width",
+        help="Velocity noise width.",
+        type=float,
+        required=True,
+    )
     parser.add_argument(
         "--type",
         choices=["points", "boxes"],
@@ -89,16 +101,16 @@ def main():
         # one for training
         full_traj = rg.generate_rigid_body_trajectory2(
             params=params,
-            vel_noise_width=VEL_NOISE_WIDTH,
-            vel_noise_bias=VEL_NOISE_BIAS,
+            vel_noise_width=args.width,
+            vel_noise_bias=args.bias,
             wrench_noise_width=WRENCH_NOISE_WIDTH,
             wrench_noise_bias=WRENCH_NOISE_BIAS,
             planar=False,
         )
         planar_traj = rg.generate_rigid_body_trajectory2(
             params=params,
-            vel_noise_width=VEL_NOISE_WIDTH,
-            vel_noise_bias=VEL_NOISE_BIAS,
+            vel_noise_width=args.width,
+            vel_noise_bias=args.bias,
             wrench_noise_width=WRENCH_NOISE_WIDTH,
             wrench_noise_bias=WRENCH_NOISE_BIAS,
             planar=True,
@@ -110,6 +122,10 @@ def main():
 
     data = {
         "num_obj": NUM_OBJ,
+        "num_primitive_bounds": NUM_PRIMITIVE_BOUNDS,
+        "mass_bounds": MASS_BOUNDS,
+        "vel_noise_width": args.width,
+        "vel_noise_bias": args.bias,
         "bounding_box": bounding_box,
         "obj_data_full": obj_data_full,
         "obj_data_planar": obj_data_planar,
