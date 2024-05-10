@@ -94,6 +94,12 @@ def parse_pickle(path):
     ell_solve_times = 1000 * np.array(data["ellipsoid"]["solve_times"])
     poly_solve_times = 1000 *np.array(data["polyhedron"]["solve_times"])
 
+    # convert to percentage
+    n = data["num_obj"]
+    nom_num_feas = 100 * data["nominal"]["num_feasible"] / n
+    ell_num_feas = 100 * data["ellipsoid"]["num_feasible"] / n
+    poly_num_feas = 100 * data["polyhedron"]["num_feasible"] / n
+
     return {
         "nom_geo_err": nom_geo_err,
         "ell_geo_err": ell_geo_err,
@@ -104,6 +110,9 @@ def parse_pickle(path):
         "nom_solve_times": nom_solve_times,
         "ell_solve_times": ell_solve_times,
         "poly_solve_times": poly_solve_times,
+        "nom_num_feas": nom_num_feas,
+        "ell_num_feas": ell_num_feas,
+        "poly_num_feas": poly_num_feas,
     }
 
 
@@ -399,6 +408,24 @@ def solve_time_bar_data(ax, results, bar_width=0.3):
     return [bar0, bar1, bar2]
 
 
+def feasibility_bar_data(ax, results, bar_width=0.3):
+    palette = seaborn.color_palette("deep")
+
+    label_xs = np.arange(len(results))  # each noise combination
+    locs = (
+        np.array([-1, 0, 1]) * bar_width
+    )  # each constraint type per noise combination
+
+    nom_num_feas = [result["nom_num_feas"] for result in results]
+    ell_num_feas = [result["ell_num_feas"] for result in results]
+    poly_num_feas = [result["poly_num_feas"] for result in results]
+
+    bar0 = ax.bar(label_xs + locs[0], nom_num_feas, color=palette[2], width=bar_width)
+    bar1 = ax.bar(label_xs + locs[1], ell_num_feas, color=palette[0], width=bar_width)
+    bar2 = ax.bar(label_xs + locs[2], poly_num_feas, color=palette[3], width=bar_width)
+    return [bar0, bar1, bar2]
+
+
 def hide_y_ticks(ax):
     ax.set_yticklabels([])
     ax.tick_params(axis="y", colors=(0, 0, 0, 0))
@@ -434,12 +461,12 @@ def plot_results():
 
     palette = seaborn.color_palette("deep")
 
-    fig = plt.figure(figsize=(5, 1.75))
+    fig = plt.figure(figsize=(6.5, 1.75))
     label_xs = np.arange(len(full_results))
     # constraint_labels = ["Hull", "Box"]
 
-    ax1 = plt.subplot(1, 3, 1)
-    ax1.set_title("Geodesic error")
+    ax1 = plt.subplot(1, 4, 1)
+    ax1.set_title("Geodesic Error")
     bars = geodesic_bar_data(ax1, full_results)
     ax1.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5, axis="y")
     # ax1.set_xticks(label_xs, constraint_labels, rotation=0)
@@ -448,7 +475,7 @@ def plot_results():
     # ax1.set_ylim([0, 1.5])
     # ax1.set_ylabel("Relative error")
 
-    ax2 = plt.subplot(1, 3, 2)
+    ax2 = plt.subplot(1, 4, 2)
     ax2.set_title("Validation RMSE")
     validation_bar_data(ax2, full_results)
     ax2.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5, axis="y")
@@ -458,11 +485,17 @@ def plot_results():
     # ax2.set_ylim([0, 1.5])
     # hide_y_ticks(ax2)
 
-    ax3 = plt.subplot(1, 3, 3)
-    ax3.set_title("Solve time [ms]")
-    solve_time_bar_data(ax3, full_results)
+    ax3 = plt.subplot(1, 4, 3)
+    ax3.set_title("Number Realizable [%]")
+    feasibility_bar_data(ax3, full_results)
     ax3.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5, axis="y")
     ax3.tick_params(axis="x", length=0)
+
+    ax4 = plt.subplot(1, 4, 4)
+    ax4.set_title("Solve time [ms]")
+    solve_time_bar_data(ax4, full_results)
+    ax4.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5, axis="y")
+    ax4.tick_params(axis="x", length=0)
 
     labels = ["Nominal", "Ellipsoidal", "Polyhedral"]
     fig.tight_layout(pad=0.1)
