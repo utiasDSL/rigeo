@@ -18,17 +18,11 @@ import IPython
 # fraction of data to be used for training (vs. testing)
 TRAIN_TEST_SPLIT = 0.5
 
-# train only with data in the x-y plane
-# TRAIN_WITH_PLANAR_ONLY = True
-
-# use the overall bounding box rather than tight convex hull of the body's
-# shape -- this is equivalent to just having a box shape with the given params
-# USE_BOUNDING_BOX = False
+TRAIN_WITH_NOISY_MOTION = False
 
 SHUFFLE = True
 REGULARIZATION_COEFF = 0
 PIM_EPS = 1e-4
-# PIM_EPS = 0
 SOLVER = cp.MOSEK
 
 
@@ -130,10 +124,12 @@ def main():
             As_noisy = np.array(data["obj_data_full"][i]["As_noisy"])[idx, :]
             ws_noisy = np.array(data["obj_data_full"][i]["ws_noisy"])[idx, :]
 
-        # Vs_train = Vs_noisy[:n_train]
-        # As_train = As_noisy[:n_train]
-        Vs_train = Vs[:n_train]
-        As_train = As[:n_train]
+        if TRAIN_WITH_NOISY_MOTION:
+            Vs_train = Vs_noisy[:n_train]
+            As_train = As_noisy[:n_train]
+        else:
+            Vs_train = Vs[:n_train]
+            As_train = As[:n_train]
         ws_train = ws_noisy[:n_train]
 
         Ys_train = np.array(
@@ -176,6 +172,7 @@ def main():
             warm_start=False,
         )
 
+        # TODO try reordering to see if this changes compute time results
         res_nom = prob.solve([body], must_realize=False)
         res_poly = prob.solve([body], must_realize=True)
         res_ell = prob.solve([body_mbe], must_realize=True)
@@ -246,8 +243,13 @@ def main():
         poly = body.shapes[0]
         if poly.can_realize(params_nom):
             results["nominal"]["num_feasible"] += 1
-        if poly.can_realize(params_ell):
-            results["ellipsoid"]["num_feasible"] += 1
+
+        try:
+            if poly.can_realize(params_ell):
+                results["ellipsoid"]["num_feasible"] += 1
+        except cp.error.SolverError:
+            # take failure to solve as infeasible
+            pass
 
         assert poly.can_realize(params_poly)
         results["polyhedron"]["num_feasible"] += 1

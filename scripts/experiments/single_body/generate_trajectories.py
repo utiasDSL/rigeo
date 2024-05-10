@@ -16,7 +16,7 @@ VEL_NOISE_BIAS = 0
 # TODO should generate the bodies *first*, then keep these constant while
 # adding various amounts of noise
 WRENCH_NOISE_COV = np.diag([1.2, 1.2, 0.5, 0.02, 0.02, 0.03]) ** 2
-WRENCH_NOISE_BIAS = np.array([50, 50, 50, 0, 0, 0])
+WRENCH_NOISE_BIAS = np.array([5, 5, 5, 0, 0, 0])
 
 
 def main():
@@ -62,6 +62,10 @@ def main():
     data = body_data.copy()
     data["obj_data_full"] = obj_data_full
     data["obj_data_planar"] = obj_data_planar
+    data["vel_noise_bias"] = VEL_NOISE_BIAS
+    data["vel_noise_width"] = VEL_NOISE_WIDTH
+    data["wrench_noise_bias"] = WRENCH_NOISE_BIAS
+    data["wrench_noise_cov"] = WRENCH_NOISE_COV
 
     with open(args.outfile, "wb") as f:
         pickle.dump(data, f)
