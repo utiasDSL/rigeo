@@ -46,6 +46,7 @@ def result_dict():
         "no_noise": dict_of_lists(list_keys, counter_keys),
         "nominal": dict_of_lists(list_keys, counter_keys),
         "ellipsoid": dict_of_lists(list_keys, counter_keys),
+        "ell_com": dict_of_lists(list_keys, counter_keys),
         "polyhedron": dict_of_lists(list_keys, counter_keys),
     }
 
@@ -162,7 +163,7 @@ def main():
         params_noiseless = res_noiseless.params[0]
 
         # solve noisy problem with varying constraints
-        prob = rg.IdentificationProblem(
+        res_nom = rg.IdentificationProblem(
             As=Ys_train,
             bs=ws_train,
             γ=REGULARIZATION_COEFF,
@@ -170,21 +171,48 @@ def main():
             Σ=Σ,
             solver=SOLVER,
             warm_start=False,
-        )
+        ).solve([body], must_realize=False)
 
-        # TODO try reordering to see if this changes compute time results
-        res_nom = prob.solve([body], must_realize=False)
-        res_poly = prob.solve([body], must_realize=True)
-        res_ell = prob.solve([body_mbe], must_realize=True)
+        res_poly = rg.IdentificationProblem(
+            As=Ys_train,
+            bs=ws_train,
+            γ=REGULARIZATION_COEFF,
+            ε=PIM_EPS,
+            Σ=Σ,
+            solver=SOLVER,
+            warm_start=False,
+        ).solve([body], must_realize=True)
+
+        res_ell = rg.IdentificationProblem(
+            As=Ys_train,
+            bs=ws_train,
+            γ=REGULARIZATION_COEFF,
+            ε=PIM_EPS,
+            Σ=Σ,
+            solver=SOLVER,
+            warm_start=False,
+        ).solve([body_mbe], must_realize=True)
+
+        res_ell_com = rg.IdentificationProblem(
+            As=Ys_train,
+            bs=ws_train,
+            γ=REGULARIZATION_COEFF,
+            ε=PIM_EPS,
+            Σ=Σ,
+            solver=SOLVER,
+            warm_start=False,
+        ).solve([body_mbe], must_realize=True, com_bounding_shapes=[body.shapes[0]])
 
         params_nom = res_nom.params[0]
-        params_poly = res_poly.params[0]
         params_ell = res_ell.params[0]
+        params_ell_com = res_ell_com.params[0]
+        params_poly = res_poly.params[0]
 
         # parameter values
         results["no_noise"]["params"].append(params_noiseless)
         results["nominal"]["params"].append(params_nom)
         results["ellipsoid"]["params"].append(params_ell)
+        results["ell_com"]["params"].append(params_ell_com)
         results["polyhedron"]["params"].append(params_poly)
 
         # Riemannian errors
@@ -196,6 +224,9 @@ def main():
         )
         results["ellipsoid"]["riemannian_errors"].append(
             rg.positive_definite_distance(params.J, params_ell.J)
+        )
+        results["ell_com"]["riemannian_errors"].append(
+            rg.positive_definite_distance(params.J, params_ell_com.J)
         )
         results["polyhedron"]["riemannian_errors"].append(
             rg.positive_definite_distance(params.J, params_poly.J)
@@ -210,6 +241,9 @@ def main():
         )
         results["ellipsoid"]["validation_errors"].append(
             rg.validation_rmse(Ys_test, ws_test, params_ell.vec, W=None)
+        )
+        results["ell_com"]["validation_errors"].append(
+            rg.validation_rmse(Ys_test, ws_test, params_ell_com.vec, W=None)
         )
         results["polyhedron"]["validation_errors"].append(
             rg.validation_rmse(Ys_test, ws_test, params_poly.vec, W=None)
@@ -226,29 +260,42 @@ def main():
         results["no_noise"]["objective_values"].append(res_noiseless.objective)
         results["nominal"]["objective_values"].append(res_nom.objective)
         results["ellipsoid"]["objective_values"].append(res_ell.objective)
+        results["ell_com"]["objective_values"].append(res_ell_com.objective)
         results["polyhedron"]["objective_values"].append(res_poly.objective)
 
         # number of iterations
         results["no_noise"]["num_iters"].append(res_noiseless.iters)
         results["nominal"]["num_iters"].append(res_nom.iters)
         results["ellipsoid"]["num_iters"].append(res_ell.iters)
+        results["ell_com"]["num_iters"].append(res_ell_com.iters)
         results["polyhedron"]["num_iters"].append(res_poly.iters)
 
         # solve times
         results["no_noise"]["solve_times"].append(res_noiseless.solve_time)
         results["nominal"]["solve_times"].append(res_nom.solve_time)
         results["ellipsoid"]["solve_times"].append(res_ell.solve_time)
+        results["ell_com"]["solve_times"].append(res_ell_com.solve_time)
         results["polyhedron"]["solve_times"].append(res_poly.solve_time)
 
         poly = body.shapes[0]
-        if poly.can_realize(params_nom):
-            results["nominal"]["num_feasible"] += 1
+
+        try:
+            if poly.can_realize(params_nom):
+                results["nominal"]["num_feasible"] += 1
+        except cp.error.SolverError:
+            # take failure to solve as infeasible
+            pass
 
         try:
             if poly.can_realize(params_ell):
                 results["ellipsoid"]["num_feasible"] += 1
         except cp.error.SolverError:
-            # take failure to solve as infeasible
+            pass
+
+        try:
+            if poly.can_realize(params_ell_com):
+                results["ell_com"]["num_feasible"] += 1
+        except cp.error.SolverError:
             pass
 
         assert poly.can_realize(params_poly)

@@ -9,7 +9,7 @@ import rigeo as rg
 
 import IPython
 
-NUM_OBJ = 100
+NUM_OBJ = 1000
 NUM_PRIMITIVE_BOUNDS = [10, 30]
 BOUNDING_BOX_HALF_EXTENTS = [0.5, 0.5, 0.5]
 MASS_BOUNDS = [0.5, 5.0]

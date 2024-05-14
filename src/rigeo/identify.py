@@ -132,7 +132,7 @@ class IdentificationProblem:
 
         self.solve_kwargs = kwargs
 
-    def solve(self, bodies, must_realize=True):
+    def solve(self, bodies, must_realize=True, com_bounding_shapes=None):
         """Solve the identification problem.
 
         Additional ``kwargs`` are passed to the `solve` method of the
@@ -154,6 +154,9 @@ class IdentificationProblem:
         : Iterable[InertialParameters]
             The identified inertial parameters for each body.
         """
+        if com_bounding_shapes is not None:
+            assert len(com_bounding_shapes) == len(bodies)
+
         # variables
         θs = [cp.Variable(10) for _ in bodies]
         Js = [pim_must_equal_vec(θ) for θ in θs]
@@ -173,6 +176,12 @@ class IdentificationProblem:
         if must_realize:
             for body, J in zip(bodies, Js):
                 constraints.extend(body.must_realize(J))
+
+        if com_bounding_shapes is not None:
+            for shape, J in zip(com_bounding_shapes, Js):
+                m = J[3, 3]
+                h = J[:3, 3]
+                constraints.extend(shape.must_contain(h, scale=m))
 
         problem = cp.Problem(objective, constraints)
 
