@@ -79,3 +79,43 @@ def random_points_in_ball(shape=1, dim=3):
     if shape == 1:
         return np.squeeze(points)
     return points
+
+
+def rejection_sample(actual_shapes, bounding_shape, sample_shape, max_tries=10000):
+    if np.isscalar(sample_shape):
+        sample_shape = (sample_shape,)
+    sample_shape = tuple(sample_shape)
+
+    n = np.product(sample_shape)
+    full = np.zeros(n, dtype=bool)
+    points = np.zeros((n, 3))
+    m = n
+    tries = 0
+    while m > 0:
+        # generate as many points as we still need
+        candidates = bounding_shape.random_points(m)
+
+        # check if they are contained in the actual shape
+        c = np.any([s.contains(candidates) for s in actual_shapes])
+
+        # short-circuit if no points are contained
+        if not c.any():
+            continue
+
+        # use the points that are contained, storing them and marking them
+        # full
+        points[~full][c] = candidates[c]
+        full[~full] = c
+
+        # update count of remaining points to generate
+        m = n - np.sum(full)
+
+        # eventually error out if this is taking too long
+        tries += 1
+        if tries >= max_tries:
+            raise ValueError("Failed to generate enough points by rejection sampling.")
+
+    # back to original shape
+    if sample_shape == (1,):
+        return np.squeeze(points)
+    return points.reshape(sample_shape + (3,))

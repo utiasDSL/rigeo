@@ -5,10 +5,10 @@ import time
 import numpy as np
 import cvxpy as cp
 
-import rigeo.util as util
-from rigeo.inertial import InertialParameters
-from rigeo.constraint import pim_must_equal_param_var
-from rigeo.shape import VerificationStats
+from .util import clean_transform, skew6, lift6
+from .inertial import InertialParameters
+from .constraint import pim_must_equal_param_var
+from .shape import VerificationStats
 
 
 class RigidBody:
@@ -175,7 +175,7 @@ class RigidBody:
         : RigidBody
             A new rigid body that has been rigidly transformed.
         """
-        rotation, translation = util.clean_transform(
+        rotation, translation = clean_transform(
             rotation=rotation, translation=translation, dim=3
         )
         shapes = [
@@ -203,4 +203,4 @@ class RigidBody:
         : np.ndarray, shape (6, 10)
             The regressor matrix.
         """
-        return util.lift6(A) + util.skew6(V) @ util.lift6(V)
+        return lift6(A) + skew6(V) @ lift6(V)

@@ -4,9 +4,9 @@ import numpy as np
 import hppfcl
 import pinocchio
 
-from rigeo.shape import Box, Ellipsoid, Cylinder
-from rigeo.inertial import I2H, InertialParameters
-from rigeo.rigidbody import RigidBody
+from .shape import Box, Ellipsoid, Cylinder
+from .inertial import I2H, InertialParameters
+from .rigidbody import RigidBody
 
 
 RF = pinocchio.ReferenceFrame

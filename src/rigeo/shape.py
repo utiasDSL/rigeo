@@ -7,11 +7,11 @@ import numpy as np
 import cvxpy as cp
 from scipy.linalg import orth, sqrtm, null_space
 
-from rigeo.polydd import SpanForm, FaceForm
-from rigeo.util import clean_transform
-from rigeo.constraint import schur, pim_must_equal_param_var
-from rigeo.random import random_weight_vectors, random_points_in_ball
-from rigeo.inertial import InertialParameters
+from .polydd import SpanForm, FaceForm
+from .util import clean_transform
+from .constraint import schur, pim_must_equal_param_var
+from .random import random_weight_vectors, random_points_in_ball, rejection_sample
+from .inertial import InertialParameters
 
 
 # set to True to use experimental trace constraints for box and cylinder
@@ -1620,40 +1620,45 @@ class Capsule(Shape):
         )
 
     def random_points(self, shape=1):
-        if np.isscalar(shape):
-            shape = (shape,)
-        shape = tuple(shape)
+        # if np.isscalar(shape):
+        #     shape = (shape,)
+        # shape = tuple(shape)
 
+        # use rejection sampling within the bounding box
         mbb = self.mbb()
-        n = np.product(shape)
+        return rejection_sample(
+            actual_shapes=[self], bounding_shape=self.mbb(), sample_shape=shape
+        )
 
-        # TODO this loop could last a long time in degenerate cases
-        full = np.zeros(n, dtype=bool)
-        points = np.zeros((n, 3))
-        m = n
-        while m > 0:
-            # generate as many points as we still need
-            candidates = mbb.random_points(m)
-
-            # check if they are contained in the actual shape
-            c = self.contains(candidates)
-
-            # short-circuit if no points are contained
-            if not c.any():
-                continue
-
-            # use the points that are contained, storing them and marking them
-            # full
-            points[~full][c] = candidates[c]
-            full[~full] = c
-
-            # update count of remaining points to generate
-            m = n - np.sum(full)
-
-        # back to original shape
-        if shape == (1,):
-            return np.squeeze(points)
-        return points.reshape(shape + (3,))
+        # n = np.product(shape)
+        #
+        # # TODO this loop could last a long time in degenerate cases
+        # full = np.zeros(n, dtype=bool)
+        # points = np.zeros((n, 3))
+        # m = n
+        # while m > 0:
+        #     # generate as many points as we still need
+        #     candidates = mbb.random_points(m)
+        #
+        #     # check if they are contained in the actual shape
+        #     c = self.contains(candidates)
+        #
+        #     # short-circuit if no points are contained
+        #     if not c.any():
+        #         continue
+        #
+        #     # use the points that are contained, storing them and marking them
+        #     # full
+        #     points[~full][c] = candidates[c]
+        #     full[~full] = c
+        #
+        #     # update count of remaining points to generate
+        #     m = n - np.sum(full)
+        #
+        # # back to original shape
+        # if shape == (1,):
+        #     return np.squeeze(points)
+        # return points.reshape(shape + (3,))
 
 
 def _mbee_con_mat(S, d, Ai, bi, ti):

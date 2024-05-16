@@ -148,6 +148,8 @@ class IdentificationProblem:
             If ``True``, enforce density realizable constraints. If ``False``,
             the problem is unconstrained except that each pseudo-inertia matrix
             must be positive definite.
+        com_bounding_shapes : Iterable[Shape]
+            Optional bounding shapes for the centers of mass of the bodies.
 
         Returns
         -------

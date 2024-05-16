@@ -1,7 +1,7 @@
 import numpy as np
 
-import rigeo.util as util
-from rigeo.random import random_psd_matrix
+from .util import skew3, skew6, vech
+from .random import random_psd_matrix
 
 
 def H2I(H):
@@ -84,7 +84,7 @@ class InertialParameters:
     @property
     def vec(self):
         """Inertial parameter vector."""
-        return np.concatenate([[self.mass], self.h, util.vech(self.I)])
+        return np.concatenate([[self.mass], self.h, vech(self.I)])
 
     @property
     def I(self):
@@ -114,7 +114,7 @@ class InertialParameters:
     @property
     def M(self):
         """Spatial mass matrix."""
-        S = util.skew3(self.h)
+        S = skew3(self.h)
         return np.block([[self.mass * np.eye(3), -S], [S, self.I]])
 
     @classmethod
@@ -246,4 +246,4 @@ class InertialParameters:
     def body_wrench(self, V, A):
         """Compute the body-frame wrench about the reference point."""
         M = self.M
-        return M @ A + util.skew6(V) @ M @ V
+        return M @ A + skew6(V) @ M @ V

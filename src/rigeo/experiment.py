@@ -5,6 +5,7 @@ import wrlparser
 
 from .shape import Box, ConvexPolyhedron
 from .util import skew6, compute_evaluation_times
+from .random import rejection_sample
 
 
 class WRL:
@@ -52,6 +53,8 @@ class WRL:
             self.polys.append(poly)
 
         self.points = np.vstack(scaled_points)
+        self._aabb = Box.from_points_to_bound(self.points)
+        assert np.isclose(self._aabb.diaglen, diaglen)
 
     @classmethod
     def from_string(cls, s, **kwargs):
@@ -71,19 +74,28 @@ class WRL:
         """Number of shapes (polyhedra) in the scene."""
         return len(self.polys)
 
-    def random_points(self, n):
+    def aabb(self):
+        """Axis-aligned bounding box."""
+        return self._aabb
+
+    def random_points(self, shape=1):
         """Generate random points contained in the shapes in the scene."""
+        # TODO should use rejection sampling
         # uniformly randomly choose which shapes to generate points in
-        prob = np.ones(self.ns) / self.ns  # uniform
-        num_per_poly = np.random.multinomial(n, prob)
+        return rejection_sample(
+            actual_shapes=self.polys, bounding_shape=self.aabb(), sample_shape=shape
+        )
+        # prob = np.ones(self.ns) / self.ns  # uniform
+        # num_per_poly = np.random.multinomial(n, prob)
+        #
+        # # generate the random points in each polyhedron
+        # points = []
+        # for num, poly in zip(num_per_poly, self.polys):
+        #     points.append(poly.random_points(num))
+        # return np.vstack(points)
 
-        # generate the random points in each polyhedron
-        points = []
-        for num, poly in zip(num_per_poly, self.polys):
-            points.append(poly.random_points(num))
-        return np.vstack(points)
 
-
+# TODO: rename: generate_rigid_body_wrench_trajectory
 def generate_rigid_body_trajectory(
     params,
     duration=2 * np.pi,
@@ -276,7 +288,6 @@ def generate_rigid_body_trajectory2(
     As_noisy = (V2_noisy[1:, :] - V2_noisy[:-1, :]) / eval_step
 
     # apply noise to wrench
-    # TODO use normal distribution
     if wrench_noise_bias is None:
         wrench_noise_bias = np.zeros(6)
     if wrench_noise_cov is None:
@@ -284,8 +295,6 @@ def generate_rigid_body_trajectory2(
     assert wrench_noise_bias.shape == (6,)
     assert wrench_noise_cov.shape == (6, 6)
 
-    # w_noise_raw = np.random.random(size=ws.shape) - 0.5
-    # w_noise = wrench_noise_width * w_noise_raw + wrench_noise_bias
     wrench_noise = np.random.multivariate_normal(
         mean=wrench_noise_bias, cov=wrench_noise_cov, size=ws.shape[0]
     )
