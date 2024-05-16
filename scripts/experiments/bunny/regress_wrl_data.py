@@ -6,91 +6,19 @@ import pickle
 
 import numpy as np
 import cvxpy as cp
-import colorama
+import tqdm
 
 import rigeo as rg
 
 import IPython
 
 
-# TODO: compare against just using convex hull; do verification as well
-
-
-# fraction of data to be used for training (vs. testing)
 TRAIN_TEST_SPLIT = 0.5
 
-# train only with data in the x-y plane
-TRAIN_WITH_PLANAR_ONLY = False
-
-# use the overall bounding box rather than tight convex hull of the body's
-# shape
-USE_BOUNDING_BOX = False
-
 SHUFFLE = True
-
 REGULARIZATION_COEFF = 0
 PIM_EPS = 1e-4
 SOLVER = cp.MOSEK
-
-
-def green(s):
-    """Color a string green."""
-    return colorama.Fore.GREEN + s + colorama.Fore.RESET
-
-
-def yellow(s):
-    """Color a string yellow."""
-    return colorama.Fore.YELLOW + s + colorama.Fore.RESET
-
-
-class ErrorSet:
-    def __init__(self, name):
-        self.name = name
-
-        self.no_noise = []
-        self.nominal = []
-        # self.ellipsoid = []
-        self.polyhedron = []
-
-    def print(self, index=None):
-        print(self.name)
-        print("".ljust(len(self.name), "-"))
-
-        if index is None:
-            s = np.s_[:]
-        else:
-            s = np.s_[index]
-
-        print(f"no noise   = {self.no_noise[s]}")
-        print(f"nominal    = {self.nominal[s]}")
-        # print(f"ellipsoid  = {self.ellipsoid[s]}")
-        print(f"polyhedron = {self.polyhedron[s]}")
-
-    def print_average(self):
-        print(self.name)
-        print("".ljust(len(self.name), "-"))
-        print(f"no noise   = {np.median(self.no_noise)}")
-        print(f"nominal    = {np.median(self.nominal)}")
-        # print(f"ellipsoid  = {np.median(self.ellipsoid)}")
-        print(f"polyhedron = {np.median(self.polyhedron)}")
-
-        poly = np.array(self.polyhedron)
-        nom = np.array(self.nominal)
-        # ell = np.array(self.ellipsoid)
-        n = len(self.polyhedron)
-        n_poly_better_than_nom = np.sum(poly <= nom)
-        # n_poly_better_than_ell = np.sum(poly <= ell)
-        print(f"poly better than nom: {n_poly_better_than_nom}/{n}")
-        # print(f"poly better than ell: {n_poly_better_than_ell}/{n}")
-
-
-def verification(data):
-    for i in range(data["num_params"]):
-        params = data["params"][i]
-        body = rg.RigidBody(shapes=scene.polys, params=params)
-        solved, stats = body.is_realizable(verbose=True, solver=SOLVER, warm_start=False)
-        print(stats.solve_time)
-
 
 
 def main():
@@ -99,7 +27,7 @@ def main():
 
     parser = argparse.ArgumentParser()
     parser.add_argument("wrlfile", help="WRL/VRML file to load.")
-    parser.add_argument("pklfile", help="Pickle file to save the data to.")
+    parser.add_argument("pklfile", help="Pickle file to load the data from.")
     args = parser.parse_args()
 
     # load the data
@@ -109,21 +37,22 @@ def main():
     # load the scene
     scene = rg.WRL.from_file_path(args.wrlfile, diaglen=data["bb_diag_len"])
 
-    riemannian_errors = ErrorSet("Riemannian error")
-    validation_errors = ErrorSet("Validation error")
-    objective_values = ErrorSet("Objective value")
-    num_iterations = ErrorSet("Num iterations")
-    solve_times = ErrorSet("Solve time")
+    Σ = data["wrench_noise_cov"]
 
+    regression_results = {
+        "num_iters": [],
+        "solve_times": [],
+        "params": [],
+    }
 
-    for i in range(data["num_params"]):
+    verification_results = {
+        "num_iters": [],
+        "solve_times": [],
+    }
+
+    for i in tqdm.tqdm(range(data["num_params"])):
         params = data["params"][i]
-
-        if USE_BOUNDING_BOX:
-            box = rg.Box.from_points_to_bound(scene.points)
-            body = rg.RigidBody(shapes=box, params=params)
-        else:
-            body = rg.RigidBody(shapes=scene.polys, params=params)
+        body = scene.body(params)
 
         idx = np.arange(data["obj_data_full"][i]["Vs"].shape[0])
         if SHUFFLE:
@@ -138,14 +67,9 @@ def main():
         n_train = int(TRAIN_TEST_SPLIT * n)
 
         # regression/training data
-        if TRAIN_WITH_PLANAR_ONLY:
-            Vs_noisy = np.array(data["obj_data_planar"][i]["Vs_noisy"])[idx, :]
-            As_noisy = np.array(data["obj_data_planar"][i]["As_noisy"])[idx, :]
-            ws_noisy = np.array(data["obj_data_planar"][i]["ws_noisy"])[idx, :]
-        else:
-            Vs_noisy = np.array(data["obj_data_full"][i]["Vs_noisy"])[idx, :]
-            As_noisy = np.array(data["obj_data_full"][i]["As_noisy"])[idx, :]
-            ws_noisy = np.array(data["obj_data_full"][i]["ws_noisy"])[idx, :]
+        Vs_noisy = np.array(data["obj_data_full"][i]["Vs_noisy"])[idx, :]
+        As_noisy = np.array(data["obj_data_full"][i]["As_noisy"])[idx, :]
+        ws_noisy = np.array(data["obj_data_full"][i]["ws_noisy"])[idx, :]
 
         Vs_train = Vs_noisy[:n_train]
         As_train = As_noisy[:n_train]
@@ -169,88 +93,37 @@ def main():
         )[:n_train]
         ws_train_noiseless = ws[:n_train]
 
-        prob_noiseless = rg.IdentificationProblem(
-            As=Ys_train_noiseless,
-            bs=ws_train_noiseless,
-            γ=REGULARIZATION_COEFF,
-            ε=PIM_EPS,
-            solver=SOLVER,
-            warm_start=False,
-        )
-        res_noiseless = prob_noiseless.solve([body], must_realize=False)
-        params_noiseless = res_noiseless.params[0]
-
-        # solve noisy problem with varying constraints
-        prob = rg.IdentificationProblem(
+        id_res = rg.IdentificationProblem(
             As=Ys_train,
             bs=ws_train,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            Σ=Σ,
             solver=SOLVER,
             warm_start=False,
+        ).solve([body], must_realize=True)
+
+        regression_results["params"].append(id_res.params[0])
+        regression_results["solve_times"].append(id_res.solve_time)
+        regression_results["num_iters"].append(id_res.iters)
+
+        # verify realizability
+        # TODO currently this fails
+        solved, verify_res = body.is_realizable(
+            verbose=True, solver=SOLVER, warm_start=False
         )
-        res_nom = prob.solve([body], must_realize=False)
-        res_poly = prob.solve([body], must_realize=True)
+        assert solved
+        verification_results["solve_times"].append(verify_res.solve_time)
+        verification_results["num_iters"].append(verify_res.iters)
 
-        params_nom = res_nom.params[0]
-        params_poly = res_poly.params[0]
+    mean_func = np.median
+    print("Identification")
+    print(f"Solve time = {mean_func(regression_results['solve_times'])}")
+    print(f"Iterations = {mean_func(regression_results['num_iters'])}")
 
-        riemannian_errors.no_noise.append(
-            rg.positive_definite_distance(params.J, params_noiseless.J)
-        )
-        riemannian_errors.nominal.append(
-            rg.positive_definite_distance(params.J, params_nom.J)
-        )
-        riemannian_errors.polyhedron.append(
-            rg.positive_definite_distance(params.J, params_poly.J)
-        )
-
-        validation_errors.no_noise.append(
-            rg.validation_rmse(Ys_test, ws_test, params_noiseless.vec)
-        )
-        validation_errors.nominal.append(
-            rg.validation_rmse(Ys_test, ws_test, params_nom.vec)
-        )
-        validation_errors.polyhedron.append(
-            rg.validation_rmse(Ys_test, ws_test, params_poly.vec)
-        )
-
-        objective_values.no_noise.append(res_noiseless.objective)
-        objective_values.nominal.append(res_nom.objective)
-        objective_values.polyhedron.append(res_poly.objective)
-
-        num_iterations.no_noise.append(res_noiseless.iters)
-        num_iterations.nominal.append(res_nom.iters)
-        num_iterations.polyhedron.append(res_poly.iters)
-
-        solve_times.no_noise.append(res_noiseless.solve_time)
-        solve_times.nominal.append(res_nom.solve_time)
-        solve_times.polyhedron.append(res_poly.solve_time)
-
-        s = yellow(f"Problem {i + 1}" + "\n==========")
-        print("\n" + s)
-        print()
-        riemannian_errors.print(index=i)
-        print()
-        validation_errors.print(index=i)
-        print()
-        objective_values.print(index=i)
-        print()
-        num_iterations.print(index=i)
-        print()
-        solve_times.print(index=i)
-
-    s = green("Medians\n=======")
-    print("\n" + s + "\n")
-    riemannian_errors.print_average()
-    print()
-    validation_errors.print_average()
-    print()
-    objective_values.print_average()
-    print()
-    num_iterations.print_average()
-    print()
-    solve_times.print_average()
+    print("\nVerification")
+    print(f"Solve time = {mean_func(verification_results['solve_times'])}")
+    print(f"Iterations = {mean_func(verification_results['num_iters'])}")
 
 
 main()

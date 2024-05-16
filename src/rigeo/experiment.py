@@ -6,6 +6,7 @@ import wrlparser
 from .shape import Box, ConvexPolyhedron
 from .util import skew6, compute_evaluation_times
 from .random import rejection_sample
+from .rigidbody import RigidBody
 
 
 class WRL:
@@ -77,6 +78,9 @@ class WRL:
     def aabb(self):
         """Axis-aligned bounding box."""
         return self._aabb
+
+    def body(self, params):
+        return RigidBody(shapes=self.polys, params=params)
 
     def random_points(self, shape=1):
         """Generate random points contained in the shapes in the scene."""

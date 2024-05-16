@@ -25,6 +25,7 @@ DATA_PATHS_FULL = [
         "regress_wrench_bias0.pkl",
         "regress_wrench_bias_f1.pkl",
         "regress_wrench_bias_f5.pkl",
+        # "regress_wrench_bias_f5_reg.pkl",
     ]
 ]
 
@@ -35,7 +36,7 @@ NUM_CONSTRAINT_TYPES = len(CONSTRAINT_LABELS)
 NUM_SCENARIOS = len(DATA_PATHS_FULL)
 assert len(SCENARIO_LABELS) == NUM_SCENARIOS
 
-BAR_WIDTH = 0.25
+BAR_WIDTH = 0.2
 
 
 def parse_pickle(path):
@@ -85,7 +86,7 @@ def parse_pickle(path):
     }
 
 
-def make_boxplot(ax, data, positions, bar_width):
+def make_boxplot(ax, data, positions, bar_width=BAR_WIDTH):
     palette_light = seaborn.color_palette("pastel")
     patch_colors = [palette_light[2], palette_light[0], palette_light[1], palette_light[3]]
     bplot = ax.boxplot(

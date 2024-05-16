@@ -44,7 +44,7 @@ class RigidBody:
             return self
         return self.__add__(other)
 
-    def is_realizable(self, eps=0, **kwargs):
+    def is_realizable(self, eps=0, verbose=False, **kwargs):
         """Check if the rigid body is density realizable.
 
         Parameters
@@ -59,7 +59,7 @@ class RigidBody:
             ``True`` if ``self.params`` is realizable on ``self.shapes``,
             ``False`` otherwise.
         """
-        return self.can_realize(self.params, eps=eps, **kwargs)
+        return self.can_realize(self.params, eps=eps, verbose=verbose, **kwargs)
 
     def can_realize(self, params, eps=0, verbose=False, **kwargs):
         """Check if the rigid body can realize a set of inertial parameters.
@@ -97,6 +97,9 @@ class RigidBody:
         t1 = time.time()
 
         solved = problem.status == "optimal"
+
+        import IPython
+        IPython.embed()
 
         if verbose:
             stats = VerificationStats(

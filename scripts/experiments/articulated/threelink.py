@@ -1,56 +1,122 @@
 #!/usr/bin/env python3
 import argparse
-import time
-from enum import Enum
+import pickle
 
 import numpy as np
 import cvxpy as cp
-
-import pybullet as pyb
-import pybullet_data
-import pyb_utils
+import tqdm
 
 from xacrodoc import XacroDoc
 import rigeo as rg
 
 import IPython
 
-# NOTE: the difference between poly and ellipsoid constraints depends on the
-# seed and the regularization coefficient (decreasing this makes poly better
-# when a poly is the actual bounding object)
+NUM_TRIALS = 10
 RECORDING_TIMESTEP = 0.1
-SIM_FREQ = 100
 GRAVITY = np.array([0, 0, -9.81])
 
 TRAIN_TEST_SPLIT = 0.5
-VEL_NOISE_WIDTH = 0.1
-VEL_NOISE_BIAS = 0
 
-REGULARIZATION_COEFF = 1e-3
+SHUFFLE = True
+REGULARIZATION_COEFF = 0
 PIM_EPS = 1e-4
 SOLVER = cp.MOSEK
 
-SEED = 1
-VISUALIZE = False
+TORQUE_NOISE_COV = np.diag([0.1, 0.1, 0.1]) ** 2
+# TORQUE_NOISE_COV = np.diag([1, 1, 1]) ** 2
+TORQUE_NOISE_BIAS = np.array([0, 0, 0])
 
 
-def sinusoidal_trajectory(t):
-    b = np.array([0, 2 * np.pi, 4 * np.pi]) / 3
-    q = np.sin(t + b)
-    v = np.cos(t + b)
-    a = -np.sin(t + b)
+def dict_of_lists(list_keys, counter_keys):
+    d1 = {key: [] for key in list_keys}
+    d2 = {key: 0 for key in counter_keys}
+    return {**d1, **d2}
+
+
+def result_dict():
+    list_keys = [
+        "riemannian_errors",
+        "validation_errors",
+        "objective_values",
+        "num_iters",
+        "solve_times",
+        "params",
+    ]
+    counter_keys = ["num_feasible"]
+    return {
+        "no_noise": dict_of_lists(list_keys, counter_keys),
+        "nominal": dict_of_lists(list_keys, counter_keys),
+        "ellipsoid": dict_of_lists(list_keys, counter_keys),
+        "ell_com": dict_of_lists(list_keys, counter_keys),
+        "polyhedron": dict_of_lists(list_keys, counter_keys),
+    }
+
+
+def compute_kinematic_state(t, offsets):
+    q = np.sin(t + offsets)
+    v = np.cos(t + offsets)
+    a = -np.sin(t + offsets)
     return q, v, a
 
 
+def compute_trajectory(multi):
+    n, ts_eval = rg.compute_evaluation_times(
+        duration=2 * np.pi, step=RECORDING_TIMESTEP
+    )
+
+    qs = []
+    vs = []
+    as_ = []
+    τs = []
+
+    offsets = np.random.random(multi.nv) * 2 * np.pi
+
+    # generate the trajectory
+    for i in range(n):
+        q, v, a = compute_kinematic_state(i * RECORDING_TIMESTEP, offsets)
+        τ = multi.compute_joint_torques(q, v, a)
+
+        qs.append(q)
+        vs.append(v)
+        as_.append(a)
+        τs.append(τ)
+
+    qs = np.array(qs)
+    vs = np.array(vs)
+    as_ = np.array(as_)
+    τs = np.array(τs)
+    return qs, vs, as_, τs
+
+
+def shapes_can_realize(shapes, params):
+    assert len(shapes) == len(params)
+    for shape, p in zip(shapes, params):
+        if not shape.can_realize(p):
+            return False
+    return True
+
+
+def print_medians(results, name, key):
+    mean_func = np.median
+    print(f"\n{name}")
+    print(f"Nominal = {mean_func(results['nominal'][key])}")
+    print(f"Ellipsoid = {mean_func(results['ellipsoid'][key])}")
+    print(f"Ell+CoM = {mean_func(results['ell_com'][key])}")
+    print(f"Polyhedron = {mean_func(results['polyhedron'][key])}")
+
+
 def main():
+    np.set_printoptions(suppress=True, precision=6)
+    np.random.seed(0)
+
     parser = argparse.ArgumentParser()
     parser.add_argument(
         "shape", help="Which link shape to use.", choices=["box", "cylinder"]
     )
+    parser.add_argument(
+        "-o", "--outfile", help="File to save the results to.", required=False
+    )
     args = parser.parse_args()
-
-    np.set_printoptions(suppress=True, precision=6)
-    np.random.seed(SEED)
 
     # compile the URDF
     xacro_doc = XacroDoc.from_package_file(
@@ -66,168 +132,195 @@ def main():
     bodies_mbe = [body.mbes() for body in bodies]
 
     params = [body.params for body in bodies]
-    θ = np.concatenate([p.vec for p in params])
-    #
-    # # TODO brittle
-    boxes = [body.shapes[0] for body in bodies]
-    ellipsoids = [box.mbe() for box in boxes]
+    shapes = [body.shapes[0] for body in bodies]
 
-    n, ts_eval = rg.compute_evaluation_times(
-        duration=2 * np.pi, step=RECORDING_TIMESTEP
-    )
+    results = result_dict()
 
-    qs = []
-    vs = []
-    as_ = []
-    τs = []
+    for i in tqdm.tqdm(range(NUM_TRIALS)):
+        # joint trajectory
+        qs, vs, as_, τs = compute_trajectory(multi)
+        n = qs.shape[0]
 
-    # generate the trajectory
-    for i in range(n):
-        q, v, a = sinusoidal_trajectory(i * RECORDING_TIMESTEP)
-        τ = multi.compute_joint_torques(q, v, a)
-
-        qs.append(q)
-        vs.append(v)
-        as_.append(a)
-        τs.append(τ)
-
-    qs = np.array(qs)
-    vs = np.array(vs)
-    as_ = np.array(as_)
-    τs = np.array(τs)
-
-    # add noise
-    vs_noise_raw = np.random.random(size=vs.shape) - 0.5  # mean = 0, width = 1
-    vs_noisy = vs + VEL_NOISE_WIDTH * vs_noise_raw + VEL_NOISE_BIAS
-
-    as_mid = (vs_noisy[1:, :] - vs_noisy[:-1, :]) / RECORDING_TIMESTEP
-    vs_mid = (vs_noisy[1:, :] + vs_noisy[:-1, :]) / 2
-    qs_mid = (qs[1:, :] - qs[:-1, :]) / 2  # TODO?
-
-    Ys = []
-    Ys_noisy = []
-    for i in range(n):
-        Ys.append(multi.compute_joint_torque_regressor(qs[i], vs[i], as_[i]))
-        if i < n - 1:
-            Ys_noisy.append(
-                multi.compute_joint_torque_regressor(qs_mid[i], vs_mid[i], as_mid[i])
-            )
-
-    Ys = np.array(Ys)
-    Ys_noisy = np.array(Ys_noisy)
-
-    # partition data
-    n = vs.shape[0]
-    n_train = int(TRAIN_TEST_SPLIT * n)
-
-    Ys_train = Ys_noisy[:n_train]
-    τs_train = τs[:n_train]
-
-    Ys_test = Ys[n_train:]
-    τs_test = τs[n_train:]
-
-    # solve the ID problem
-    # prob = IPIDProblem(
-    #     Ys_train, τs_train, reg_params=params, reg_coeff=REGULARIZATION_COEFF
-    # )
-    # params_nom = prob.solve(name="nominal")
-    # params_poly = prob.solve(shapes=boxes, name="poly")
-    # params_ell = prob.solve(shapes=ellipsoids, name="ellipsoid")
-
-    prob = rg.IdentificationProblem(
-        As=Ys_train, bs=τs_train, γ=REGULARIZATION_COEFF, ε=PIM_EPS, solver=SOLVER
-    )
-
-    def solve_with_info(bodies, must_realize, name):
-        P = prob.solve(bodies, must_realize=must_realize)
-        print(f"{name} iters = {prob.problem.solver_stats.num_iters}")
-        print(f"{name} solve time = {prob.problem.solver_stats.solve_time}")
-        print(f"{name} value = {prob.problem.value}")
-        return P
-
-    params_nom = solve_with_info(bodies, must_realize=False, name="nominal")
-    params_poly = solve_with_info(bodies, must_realize=True, name="poly")
-    params_ell = solve_with_info(bodies_mbe, must_realize=True, name="ellipsoid")
-
-    # results
-    riemannian_err_nom = np.sum(
-        [rg.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_nom)]
-    )
-    riemannian_err_ell = np.sum(
-        [rg.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_ell)]
-    )
-    riemannian_err_poly = np.sum(
-        [rg.positive_definite_distance(p.J, pn.J) for p, pn in zip(params, params_poly)]
-    )
-
-    θ_nom = np.concatenate([p.vec for p in params_nom])
-    validation_err_nom = rg.validation_rmse(Ys_test, τs_test, θ_nom)
-
-    θ_ell = np.concatenate([p.vec for p in params_ell])
-    validation_err_ell = rg.validation_rmse(Ys_test, τs_test, θ_ell)
-
-    θ_poly = np.concatenate([p.vec for p in params_poly])
-    validation_err_poly = rg.validation_rmse(Ys_test, τs_test, θ_poly)
-
-    print("\nRiemannian error")
-    print(f"nominal    = {riemannian_err_nom}")
-    print(f"ellipsoid  = {riemannian_err_ell}")
-    print(f"polyhedron = {riemannian_err_poly}")
-
-    print("\nValidation error")
-    print(f"nominal    = {validation_err_nom}")
-    print(f"ellipsoid  = {validation_err_ell}")
-    print(f"polyhedron = {validation_err_poly}")
-
-    IPython.embed()
-
-    if not VISUALIZE:
-        return
-
-    pyb.connect(pyb.GUI)
-    pyb.setTimeStep(1.0 / SIM_FREQ)
-    pyb.setGravity(*GRAVITY)
-    pyb.setAdditionalSearchPath(pybullet_data.getDataPath())
-    ground_id = pyb.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
-
-    # load PyBullet model
-    with xacro_doc.temp_urdf_file_path() as urdf_path:
-        robot_id = pyb.loadURDF(
-            urdf_path,
-            [0, 0, 0],
-            useFixedBase=True,
+        # add noise
+        torque_noise = np.random.multivariate_normal(
+            mean=TORQUE_NOISE_BIAS, cov=TORQUE_NOISE_COV, size=τs.shape[0]
         )
-    robot = pyb_utils.Robot(robot_id, tool_link_name="link3")
+        τs_noisy = τs + torque_noise
 
-    # remove joint friction (only relevant for torque control)
-    robot.set_joint_friction_forces([0, 0, 0])
+        Ys = []
+        for i in range(n):
+            Ys.append(multi.compute_joint_torque_regressor(qs[i], vs[i], as_[i]))
+        Ys = np.array(Ys)
 
-    q0 = sinusoidal_trajectory(0)[0]
-    robot.reset_joint_configuration(q0)
+        # partition data
+        idx = np.arange(n)
+        if SHUFFLE:
+            np.random.shuffle(idx)
 
-    Kq = np.eye(model.nq)
-    Kv = np.eye(model.nv)
-    dt = 1.0 / SIM_FREQ
-    t = 0
-    while t < 2 * np.pi:
-        qd, vd, ad = sinusoidal_trajectory(t)
-        q, v = robot.get_joint_states()
+        Ys = Ys[idx]
+        τs = τs[idx]
+        τs_noisy = τs_noisy[idx]
 
-        # computed torque control law
-        α = ad + Kq @ (qd - q) + Kv @ (vd - v)
-        u = model.compute_torques(q, v, α)
+        n = vs.shape[0]
+        n_train = int(TRAIN_TEST_SPLIT * n)
 
-        robot.command_effort(u)
-        # u = Kq @ (qd - q) + vd
-        # robot.command_velocity(u)
+        Ys_train = Ys[:n_train]
+        τs_train = τs_noisy[:n_train]
 
-        pyb.stepSimulation()
-        time.sleep(dt)
+        Ys_test = Ys[n_train:]
+        τs_test = τs[n_train:]
 
-        t += dt
+        res_nom = rg.IdentificationProblem(
+            As=Ys_train,
+            bs=τs_train,
+            γ=REGULARIZATION_COEFF,
+            ε=PIM_EPS,
+            solver=SOLVER,
+            warm_start=False,
+        ).solve(bodies, must_realize=False)
 
-    IPython.embed()
-    return
+        res_ell = rg.IdentificationProblem(
+            As=Ys_train,
+            bs=τs_train,
+            γ=REGULARIZATION_COEFF,
+            ε=PIM_EPS,
+            solver=SOLVER,
+            warm_start=False,
+        ).solve(bodies_mbe, must_realize=True)
+
+        res_ell_com = rg.IdentificationProblem(
+            As=Ys_train,
+            bs=τs_train,
+            γ=REGULARIZATION_COEFF,
+            ε=PIM_EPS,
+            solver=SOLVER,
+            warm_start=False,
+        ).solve(bodies_mbe, must_realize=True, com_bounding_shapes=shapes)
+
+        res_poly = rg.IdentificationProblem(
+            As=Ys_train,
+            bs=τs_train,
+            γ=REGULARIZATION_COEFF,
+            ε=PIM_EPS,
+            solver=SOLVER,
+            warm_start=False,
+        ).solve(bodies, must_realize=True)
+
+        params_nom = res_nom.params
+        params_ell = res_ell.params
+        params_ell_com = res_ell_com.params
+        params_poly = res_poly.params
+
+        # Riemannian errors
+        results["nominal"]["riemannian_errors"].append(
+            np.sum(
+                [
+                    rg.positive_definite_distance(p.J, pn.J)
+                    for p, pn in zip(params, params_nom)
+                ]
+            )
+        )
+        results["ellipsoid"]["riemannian_errors"].append(
+            np.sum(
+                [
+                    rg.positive_definite_distance(p.J, pn.J)
+                    for p, pn in zip(params, params_ell)
+                ]
+            )
+        )
+        results["ell_com"]["riemannian_errors"].append(
+            np.sum(
+                [
+                    rg.positive_definite_distance(p.J, pn.J)
+                    for p, pn in zip(params, params_ell_com)
+                ]
+            )
+        )
+        results["polyhedron"]["riemannian_errors"].append(
+            np.sum(
+                [
+                    rg.positive_definite_distance(p.J, pn.J)
+                    for p, pn in zip(params, params_poly)
+                ]
+            )
+        )
+
+        # validation errors
+        results["nominal"]["validation_errors"].append(
+            rg.validation_rmse(
+                Ys_test, τs_test, np.concatenate([p.vec for p in params_nom]), W=None
+            )
+        )
+        results["ellipsoid"]["validation_errors"].append(
+            rg.validation_rmse(
+                Ys_test, τs_test, np.concatenate([p.vec for p in params_ell]), W=None
+            )
+        )
+        results["ell_com"]["validation_errors"].append(
+            rg.validation_rmse(
+                Ys_test, τs_test, np.concatenate([p.vec for p in params_ell_com]), W=None
+            )
+        )
+        results["polyhedron"]["validation_errors"].append(
+            rg.validation_rmse(
+                Ys_test, τs_test, np.concatenate([p.vec for p in params_poly]), W=None
+            )
+        )
+
+        # objective values
+        results["nominal"]["objective_values"].append(res_nom.objective)
+        results["ellipsoid"]["objective_values"].append(res_ell.objective)
+        results["ell_com"]["objective_values"].append(res_ell_com.objective)
+        results["polyhedron"]["objective_values"].append(res_poly.objective)
+
+        # number of iterations
+        results["nominal"]["num_iters"].append(res_nom.iters)
+        results["ellipsoid"]["num_iters"].append(res_ell.iters)
+        results["ell_com"]["num_iters"].append(res_ell_com.iters)
+        results["polyhedron"]["num_iters"].append(res_poly.iters)
+
+        # solve times
+        results["nominal"]["solve_times"].append(res_nom.solve_time)
+        results["ellipsoid"]["solve_times"].append(res_ell.solve_time)
+        results["ell_com"]["solve_times"].append(res_ell_com.solve_time)
+        results["polyhedron"]["solve_times"].append(res_poly.solve_time)
+
+        try:
+            if shapes_can_realize(shapes, params_nom):
+                results["nominal"]["num_feasible"] += 1
+        except cp.error.SolverError:
+            # take failure to solve as infeasible
+            pass
+
+        try:
+            if shapes_can_realize(shapes, params_ell):
+                results["ellipsoid"]["num_feasible"] += 1
+        except cp.error.SolverError:
+            pass
+
+        try:
+            if shapes_can_realize(shapes, params_ell_com):
+                results["ell_com"]["num_feasible"] += 1
+        except cp.error.SolverError:
+            pass
+
+        assert shapes_can_realize(shapes, params_poly)
+        results["polyhedron"]["num_feasible"] += 1
+
+    # save the results
+    if args.outfile is not None:
+        with open(args.outfile, "wb") as f:
+            pickle.dump(results, f)
+        print(f"Saved results to {args.outfile}")
+
+    # print_medians(results, "Geodesic error", "riemannian_errors")
+    print_medians(results, "Validation error", "validation_errors")
+    print_medians(results, "Solve times", "solve_times")
+    print_medians(results, "Iterations", "num_iters")
+    print_medians(results, "Objective", "objective_values")
+    print_medians(results, "Num feasible", "num_feasible")
+
+    # IPython.embed()
 
 
 main()

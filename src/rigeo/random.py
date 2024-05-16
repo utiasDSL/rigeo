@@ -96,7 +96,10 @@ def rejection_sample(actual_shapes, bounding_shape, sample_shape, max_tries=1000
         candidates = bounding_shape.random_points(m)
 
         # check if they are contained in the actual shape
-        c = np.any([s.contains(candidates) for s in actual_shapes])
+        # TODO this is wrong
+        # TODO this needs to be tested
+        # c = np.any([s.contains(candidates) for s in actual_shapes])
+        c = np.sum([s.contains(candidates) for s in actual_shapes], axis=0).astype(bool)
 
         # short-circuit if no points are contained
         if not c.any():

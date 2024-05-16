@@ -1,7 +1,6 @@
 #!/usr/bin/env python3
 import argparse
 import time
-from enum import Enum
 
 import numpy as np
 import cvxpy as cp
@@ -14,6 +13,18 @@ from xacrodoc import XacroDoc
 import rigeo as rg
 
 import IPython
+
+
+SIM_FREQ = 100
+SIM_STEP = 1. / SIM_FREQ
+
+
+def compute_kinematic_state(t):
+    b = np.array([0, 2 * np.pi, 3 * np.pi]) / 3
+    q = np.sin(t + b)
+    v = np.cos(t + b)
+    a = -np.sin(t + b)
+    return q, v, a
 
 
 def main():
@@ -33,6 +44,7 @@ def main():
 
     pyb.connect(pyb.GUI)
     pyb.setAdditionalSearchPath(pybullet_data.getDataPath())
+    pyb.setTimeStep(SIM_STEP)
     ground_id = pyb.loadURDF("plane.urdf", [0, 0, 0], useFixedBase=True)
 
     # load PyBullet model
@@ -46,6 +58,17 @@ def main():
 
     # remove joint friction (only relevant for torque control)
     # robot.set_joint_friction_forces([0, 0, 0])
+    Kp = np.eye(robot.num_actuated_joints)
+    duration = 2 * np.pi
+    t = 0
+    while t <= duration:
+        qd, vd, _ = compute_kinematic_state(t)
+        q, _ = robot.get_joint_states()
+        u = Kp @ (qd - q) + vd
+        robot.command_velocity(u)
+        pyb.stepSimulation()
+        t += SIM_STEP
+        time.sleep(SIM_STEP)
 
     IPython.embed()
 
