@@ -185,6 +185,19 @@ def test_must_contain():
     problem.solve()
     assert np.isclose(objective.value, 1.5)
 
+    # make mass h and mass general cvxpy expressions
+    # recall that there was a bug where the schur complement function would
+    # fail in this case
+    J = cp.Variable((4, 4), PSD=True)
+    h = J[:3, 3]
+    m = J[3, 3]
+
+    objective = cp.Maximize(h[0])
+    constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+    assert np.isclose(objective.value, 1.5)
+
 
 # TODO test with rotations
 def test_must_contain_degenerate():

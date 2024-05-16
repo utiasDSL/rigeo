@@ -3,7 +3,8 @@ import cvxpy as cp
 
 
 def _shape_schur_var(X):
-    if np.isscalar(X):
+    """Shape a variable into a 2-ndim expression."""
+    if np.isscalar(X) or (isinstance(X, cp.Expression) and X.size == 1):
         X = cp.reshape(X, (1, 1))
     elif X.ndim == 1:
         X = cp.reshape(X, (X.shape[0], 1))
@@ -100,6 +101,27 @@ def pim_must_equal_vec(θ):
 
 
 def pim_must_equal_param_var(param_var, eps):
+    """Generate cvxpy constraints that ensure the pseudo-inertia matrix equals
+    the inertial parameter variable.
+
+    If the inertial parameter variable is of shape ``(4, 4)``, we treat is as a
+    pseudo-inertia matrix directly. If it is of shape ``(10,)``, then we treat
+    it is an inertial parameter vector.
+
+    Parameters
+    ----------
+    param_var : cp.Expression, shape (4, 4) or (10,)
+        The inertial parameter variable.
+    eps : float, non-negative
+        Enforce ``J - eps * np.eye(4)`` is positive semidefinite.
+
+    Returns
+    -------
+    : tuple
+        A tuple ``(J, constraints)``, where ``J`` is the pseudo-inertia matrix
+        and ``constraints`` is a list of cvxpy constraints.
+    """
+
     assert eps >= 0
     if param_var.shape == (4, 4):
         J = param_var
@@ -111,9 +133,22 @@ def pim_must_equal_param_var(param_var, eps):
     return J, pim_psd(J, eps=eps)
 
 
-# TODO
 def pim_psd(J, eps=0):
-    """Generate cvxpy constraints that ensure J is symmetric positive definite."""
+    """Generate cvxpy constraints that ensure J is symmetric positive definite.
+
+    Parameters
+    ----------
+    J : cp.Expression, shape (4, 4)
+        The pseudo-inertia matrix.
+    eps : float, non-negative
+        Enforce ``J - eps * np.eye(4)`` is positive semidefinite.
+
+    Returns
+    -------
+    : list
+        A list of cvxpy constraints to enforce that ``J`` is symmetric positive
+        (semi-)definite.
+    """
     assert J.shape == (4, 4)
     assert eps >= 0
     return [J == J.T, J >> eps * np.eye(4)]
