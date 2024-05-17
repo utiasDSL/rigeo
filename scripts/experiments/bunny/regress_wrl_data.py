@@ -108,13 +108,20 @@ def main():
         regression_results["num_iters"].append(id_res.iters)
 
         # verify realizability
-        # TODO currently this fails
         solved, verify_res = body.is_realizable(
             verbose=True, solver=SOLVER, warm_start=False
         )
         assert solved
         verification_results["solve_times"].append(verify_res.solve_time)
         verification_results["num_iters"].append(verify_res.iters)
+
+    # save the results
+    with open("bunny_verification.pkl", "wb") as f:
+        pickle.dump(verification_results, f)
+    with open("bunny_regression.pkl", "wb") as f:
+        pickle.dump(regression_results, f)
+    print("Saved results.")
+
 
     mean_func = np.median
     print("Identification")

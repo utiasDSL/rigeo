@@ -89,11 +89,11 @@ def rejection_sample(actual_shapes, bounding_shape, sample_shape, max_tries=1000
     n = np.product(sample_shape)
     full = np.zeros(n, dtype=bool)
     points = np.zeros((n, 3))
-    m = n
+    m = 0
     tries = 0
-    while m > 0:
+    while m < n:
         # generate as many points as we still need
-        candidates = bounding_shape.random_points(m)
+        candidates = bounding_shape.random_points(n - m)
 
         # check if they are contained in the actual shape
         # TODO this is wrong
@@ -107,11 +107,13 @@ def rejection_sample(actual_shapes, bounding_shape, sample_shape, max_tries=1000
 
         # use the points that are contained, storing them and marking them
         # full
-        points[~full][c] = candidates[c]
-        full[~full] = c
+        new_points = candidates[c]
+        n_new = new_points.shape[0]
+        points[m : m + n_new] = new_points
 
         # update count of remaining points to generate
-        m = n - np.sum(full)
+        # m = n - np.sum(full)
+        m += n_new
 
         # eventually error out if this is taking too long
         tries += 1

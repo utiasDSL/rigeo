@@ -58,3 +58,12 @@ def test_random_points():
     points = cap.random_points(shape=(10, 1))
     assert points.shape == (10, 1, 3)
     assert cap.contains(points.reshape((10, 3))).all()
+
+    # capsule which does not contain the origin
+    # there was a bug where the underlying rejection sampling algorithm was
+    # returning all zeros
+    cap = rg.Cylinder(length=2, radius=1, center=[5, 5, 5]).capsule()
+    assert not cap.contains([0, 0, 0])
+    points = cap.random_points(shape=10)
+    assert points.shape == (10, 3)
+    assert cap.contains(points).all()

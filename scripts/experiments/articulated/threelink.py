@@ -23,7 +23,6 @@ PIM_EPS = 1e-4
 SOLVER = cp.MOSEK
 
 TORQUE_NOISE_COV = np.diag([0.1, 0.1, 0.1]) ** 2
-# TORQUE_NOISE_COV = np.diag([1, 1, 1]) ** 2
 TORQUE_NOISE_BIAS = np.array([0, 0, 0])
 
 
@@ -96,15 +95,6 @@ def shapes_can_realize(shapes, params):
     return True
 
 
-def print_medians(results, name, key):
-    mean_func = np.median
-    print(f"\n{name}")
-    print(f"Nominal = {mean_func(results['nominal'][key])}")
-    print(f"Ellipsoid = {mean_func(results['ellipsoid'][key])}")
-    print(f"Ell+CoM = {mean_func(results['ell_com'][key])}")
-    print(f"Polyhedron = {mean_func(results['polyhedron'][key])}")
-
-
 def main():
     np.set_printoptions(suppress=True, precision=6)
     np.random.seed(0)
@@ -113,9 +103,7 @@ def main():
     parser.add_argument(
         "shape", help="Which link shape to use.", choices=["box", "cylinder"]
     )
-    parser.add_argument(
-        "-o", "--outfile", help="File to save the results to.", required=False
-    )
+    parser.add_argument("outfile", help="File to save the results to.")
     args = parser.parse_args()
 
     # compile the URDF
@@ -258,7 +246,10 @@ def main():
         )
         results["ell_com"]["validation_errors"].append(
             rg.validation_rmse(
-                Ys_test, τs_test, np.concatenate([p.vec for p in params_ell_com]), W=None
+                Ys_test,
+                τs_test,
+                np.concatenate([p.vec for p in params_ell_com]),
+                W=None,
             )
         )
         results["polyhedron"]["validation_errors"].append(
@@ -308,19 +299,9 @@ def main():
         results["polyhedron"]["num_feasible"] += 1
 
     # save the results
-    if args.outfile is not None:
-        with open(args.outfile, "wb") as f:
-            pickle.dump(results, f)
-        print(f"Saved results to {args.outfile}")
-
-    # print_medians(results, "Geodesic error", "riemannian_errors")
-    print_medians(results, "Validation error", "validation_errors")
-    print_medians(results, "Solve times", "solve_times")
-    print_medians(results, "Iterations", "num_iters")
-    print_medians(results, "Objective", "objective_values")
-    print_medians(results, "Num feasible", "num_feasible")
-
-    # IPython.embed()
+    with open(args.outfile, "wb") as f:
+        pickle.dump(results, f)
+    print(f"Saved results to {args.outfile}")
 
 
 main()

@@ -98,9 +98,6 @@ class RigidBody:
 
         solved = problem.status == "optimal"
 
-        import IPython
-        IPython.embed()
-
         if verbose:
             stats = VerificationStats(
                 iters=problem.solver_stats.num_iters,

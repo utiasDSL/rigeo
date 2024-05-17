@@ -26,7 +26,7 @@ VEL_NOISE_WIDTH = 0
 VEL_NOISE_BIAS = 0
 
 WRENCH_NOISE_COV = np.diag([1.2, 1.2, 0.5, 0.02, 0.02, 0.03]) ** 2
-WRENCH_NOISE_BIAS = np.array([5, 5, 5, 0, 0, 0])
+WRENCH_NOISE_BIAS = np.array([0, 0, 0, 0, 0, 0])
 
 
 def main():
