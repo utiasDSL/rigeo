@@ -1,5 +1,5 @@
 #!/usr/bin/env python3
-"""Generate simulated data for random polyhedral rigid bodies."""
+"""Generate simulated trajectory data for random polyhedral rigid bodies."""
 import argparse
 import pickle
 

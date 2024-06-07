@@ -66,9 +66,6 @@ def main():
         help="Use bounding box rather than convex hull.",
         action="store_true",
     )
-    # parser.add_argument(
-    #     "--save", help="Save the results to a pickle.", action="store_true"
-    # )
     args = parser.parse_args()
 
     with open(args.infile, "rb") as f:
@@ -112,10 +109,7 @@ def main():
         As = np.array(data["obj_data_full"][i]["As"])[idx, :]
         ws = np.array(data["obj_data_full"][i]["ws"])[idx, :]
 
-        n = Vs.shape[0]
-        n_train = int(TRAIN_TEST_SPLIT * n)
-
-        # regression/training data
+        # noisy data
         if args.planar:
             Vs_noisy = np.array(data["obj_data_planar"][i]["Vs_noisy"])[idx, :]
             As_noisy = np.array(data["obj_data_planar"][i]["As_noisy"])[idx, :]
@@ -124,6 +118,9 @@ def main():
             Vs_noisy = np.array(data["obj_data_full"][i]["Vs_noisy"])[idx, :]
             As_noisy = np.array(data["obj_data_full"][i]["As_noisy"])[idx, :]
             ws_noisy = np.array(data["obj_data_full"][i]["ws_noisy"])[idx, :]
+
+        n = Vs.shape[0]
+        n_train = int(TRAIN_TEST_SPLIT * n)
 
         if TRAIN_WITH_NOISY_MOTION:
             Vs_train = Vs_noisy[:n_train]

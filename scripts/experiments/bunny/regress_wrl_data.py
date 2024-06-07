@@ -14,7 +14,7 @@ import IPython
 
 
 TRAIN_TEST_SPLIT = 0.5
-
+TRAIN_WITH_NOISY_MOTION = False
 SHUFFLE = True
 REGULARIZATION_COEFF = 0
 PIM_EPS = 1e-4
@@ -63,16 +63,20 @@ def main():
         As = np.array(data["obj_data_full"][i]["As"])[idx, :]
         ws = np.array(data["obj_data_full"][i]["ws"])[idx, :]
 
-        n = Vs.shape[0]
-        n_train = int(TRAIN_TEST_SPLIT * n)
-
-        # regression/training data
+        # noisy data
         Vs_noisy = np.array(data["obj_data_full"][i]["Vs_noisy"])[idx, :]
         As_noisy = np.array(data["obj_data_full"][i]["As_noisy"])[idx, :]
         ws_noisy = np.array(data["obj_data_full"][i]["ws_noisy"])[idx, :]
 
-        Vs_train = Vs_noisy[:n_train]
-        As_train = As_noisy[:n_train]
+        n = Vs.shape[0]
+        n_train = int(TRAIN_TEST_SPLIT * n)
+
+        if TRAIN_WITH_NOISY_MOTION:
+            Vs_train = Vs_noisy[:n_train]
+            As_train = As_noisy[:n_train]
+        else:
+            Vs_train = Vs[:n_train]
+            As_train = As[:n_train]
         ws_train = ws_noisy[:n_train]
 
         Ys_train = np.array(
@@ -121,7 +125,6 @@ def main():
     with open("bunny_regression.pkl", "wb") as f:
         pickle.dump(regression_results, f)
     print("Saved results.")
-
 
     mean_func = np.median
     print("Identification")

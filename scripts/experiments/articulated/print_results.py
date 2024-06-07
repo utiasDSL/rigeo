@@ -26,7 +26,7 @@ def main():
     with open(args.pklfile, "rb") as f:
         results = pickle.load(f)
 
-    # print_medians(results, "Geodesic error", "riemannian_errors")
+    print_medians(results, "Geodesic error", "riemannian_errors")
     print_medians(results, "Validation error", "validation_errors")
     print_medians(results, "Solve times", "solve_times")
     print_medians(results, "Iterations", "num_iters")

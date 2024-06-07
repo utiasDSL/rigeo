@@ -11,25 +11,22 @@ import numpy as np
 import IPython
 
 
-FIGURE_PATH = "figures/single_body_plot_100.pdf"
-# FIGURE_PATH = "figures/single_body_plot_1000.pdf"
+# FIGURE_PATH = "figures/single_body_plot.pdf"
+FIGURE_PATH = "/home/adam/phd/papers/rigeo/heins-wafr24/tex/current/figures/single_body_plot.pdf"
+
 
 DATA_DIR = Path("data")
 
 DATA_PATHS_FULL = [
     DATA_DIR / name
     for name in [
-        # "regress1000_wrench_bias0.pkl",
-        # "regress1000_wrench_bias1.pkl",
-        # "regress1000_wrench_bias5.pkl",
-        "regress_wrench_bias0.pkl",
-        "regress_wrench_bias_f1.pkl",
-        "regress_wrench_bias_f5.pkl",
-        # "regress_wrench_bias_f5_reg.pkl",
+        "results_bias0.pkl",
+        "results_bias1.pkl",
+        "results_bias5.pkl",
     ]
 ]
 
-CONSTRAINT_LABELS = ["Nominal", "Ellipsoidal", "Ell+CoM", "Polyhedral"]
+CONSTRAINT_LABELS = ["Nom", "Ell", "Ell+CoM", "CHE"]
 SCENARIO_LABELS = ["0", "1", "5"]
 
 NUM_CONSTRAINT_TYPES = len(CONSTRAINT_LABELS)
@@ -206,15 +203,15 @@ def plot_results():
     plt.rcParams.update(
         {
             "pgf.texsystem": "pdflatex",
-            "font.size": 6,
+            "font.size": 8,
             "font.family": "serif",
             "font.sans-serif": "DejaVu Sans",
             "font.weight": "normal",
             "text.usetex": True,
-            "legend.fontsize": 6,
-            "axes.titlesize": 6,
-            "axes.labelsize": 6,
-            "xtick.labelsize": 6,
+            "legend.fontsize": 8,
+            "axes.titlesize": 8,
+            "axes.labelsize": 8,
+            "xtick.labelsize": 8,
             "pgf.preamble": "\n".join(
                 [
                     r"\usepackage[utf8]{inputenc}",
@@ -228,7 +225,7 @@ def plot_results():
 
     palette = seaborn.color_palette("deep")
 
-    fig = plt.figure(figsize=(6.5, 1.75))
+    fig = plt.figure(figsize=(6, 1.75))
     label_xs = np.arange(NUM_SCENARIOS)
 
     ax1 = plt.subplot(1, 4, 1)
@@ -252,7 +249,7 @@ def plot_results():
     # hide_y_ticks(ax2)
 
     ax3 = plt.subplot(1, 4, 3)
-    ax3.set_title("Solve time [ms]")
+    ax3.set_title("Solve Time [ms]")
     solve_time_bar_data(ax3, full_results)
     ax3.grid(color=(0.75, 0.75, 0.75), alpha=0.5, linewidth=0.5, axis="y")
     ax3.tick_params(axis="x", length=0)
@@ -265,15 +262,17 @@ def plot_results():
     ax4.tick_params(axis="x", length=0)
     ax4.set_xticks(label_xs, SCENARIO_LABELS, rotation=0)
 
+    fig.supxlabel("Bias force $f_b$ [N]", x=0.3, y=0.02)
+
     fig.tight_layout(pad=0.1, w_pad=0.5)
     plt.subplots_adjust(bottom=0.2)
     plt.figlegend(
         handles,
         CONSTRAINT_LABELS,
         loc="lower center",
-        bbox_to_anchor=(0.565, 0),
+        bbox_to_anchor=(0.72, -0.02),
         ncols=len(CONSTRAINT_LABELS),
-        # handlelength=1,
+        handlelength=1,
     )
     fig.savefig(FIGURE_PATH)
     print(f"Saved figure to {FIGURE_PATH}")

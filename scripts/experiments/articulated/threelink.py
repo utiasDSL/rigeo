@@ -163,6 +163,7 @@ def main():
             bs=τs_train,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            Σ=TORQUE_NOISE_COV,
             solver=SOLVER,
             warm_start=False,
         ).solve(bodies, must_realize=False)
@@ -172,6 +173,7 @@ def main():
             bs=τs_train,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            Σ=TORQUE_NOISE_COV,
             solver=SOLVER,
             warm_start=False,
         ).solve(bodies_mbe, must_realize=True)
@@ -181,6 +183,7 @@ def main():
             bs=τs_train,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            Σ=TORQUE_NOISE_COV,
             solver=SOLVER,
             warm_start=False,
         ).solve(bodies_mbe, must_realize=True, com_bounding_shapes=shapes)
@@ -190,6 +193,7 @@ def main():
             bs=τs_train,
             γ=REGULARIZATION_COEFF,
             ε=PIM_EPS,
+            Σ=TORQUE_NOISE_COV,
             solver=SOLVER,
             warm_start=False,
         ).solve(bodies, must_realize=True)
