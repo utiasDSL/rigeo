@@ -29,12 +29,28 @@ force-torque data.
 
 ## Installation
 
-TODO: pip installation, installation instructions
-
-## Usage
-
-Start a virtual environment to run the scripts:
+From pip:
 ```
+pip install rigeo
+```
+
+From source (using [poetry](https://python-poetry.org)):
+```
+git clone https://github.com/utiasDSL/rigeo
+cd rigeo
 poetry shell
+poetry install
+# do stuff...
 ```
 
+## Development
+
+Tests are run using pytest:
+```
+cd tests
+python -m pytest .
+```
+
+## License
+
+MIT - see the LICENSE file.

@@ -63,14 +63,14 @@ def test_cube_must_realize_J():
     # need a mass constraint to bound the problem
     constraints = box.must_realize(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5**2)
 
     # objective should be the same if we use the general convex polyhedron
     # formulation
     constraints = poly.must_realize(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5**2)
 
 
@@ -86,12 +86,12 @@ def test_cube_must_realize_vec():
     # need a mass constraint to bound the problem
     constraints = box.must_realize(θ) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5)
 
     # objective should be the same if we use the general convex polyhedron
     # formulation
     constraints = poly.must_realize(θ) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5)
