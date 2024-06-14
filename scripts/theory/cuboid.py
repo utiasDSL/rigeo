@@ -16,4 +16,8 @@ masses2 = mass * np.ones(4) / 4
 points2 = np.array([[0.5, 1, 2], [0.5, -1, -2], [-0.5, 1, 2], [-0.5, -1, -2]])
 params2 = rg.InertialParameters.from_point_masses(masses=masses2, points=points2)
 
+masses3 = mass * np.ones(2) / 2
+points3 = np.array([[-0.5, 1, 2], [0.5, -1, -2]])
+params3 = rg.InertialParameters.from_point_masses(masses=masses3, points=points3)
+
 IPython.embed()
