@@ -24,6 +24,7 @@ pin = ">=2.6.0"
 hpp-fcl = ">=2.2.0"
 spatialmath-python = "^1.1.10"
 tqdm = "^4.66.4"
+seaborn = "^0.13.2"
 
 [tool.poetry.group.dev.dependencies]
 pytest = "^7.4.0"

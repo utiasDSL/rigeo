@@ -18,9 +18,10 @@ force-torque data.
 
 * Build rigid bodies out of flexible shape primitives: convex polyhedra,
   ellipsoids, and cylinders.
-* Obtain the intersection of two convex polyhedra. This is particularly useful
-  for obtaining contact patches between polyhedral objects for manipulation;
-  e.g., when [solving the waiter's problem](https://arxiv.org/abs/2305.17484)
+* Obtain the intersection of two convex polyhedra (via
+  [cdd](https://pycddlib.readthedocs.io)). This is particularly useful for
+  obtaining contact patches between polyhedral objects for manipulation; e.g.,
+  when [solving the waiter's problem](https://arxiv.org/abs/2305.17484)
 * Obtain the distance between primitive shapes using convex programming.
 * Compute maximum-volume inscribed and minimum-volume bounding ellipsoids for
   sets of points.
@@ -28,6 +29,11 @@ force-torque data.
   some lower-dimensional subspace than the ambient space).
 
 ## Installation
+
+The library has been tested on Ubuntu 20.04 using Python 3.8; newer Python
+versions and OS versions may also work. Optimization problems use
+[cvxpy](https://www.cvxpy.org/); MOSEK is installed by default and is used as
+the solver for the tests.
 
 From pip:
 ```
@@ -40,7 +46,14 @@ git clone https://github.com/utiasDSL/rigeo
 cd rigeo
 poetry shell
 poetry install
-# do stuff...
+# do stuff ...
+```
+
+From source (using pip):
+```
+git clone https://github.com/utiasDSL/rigeo
+cd rigeo
+python -m pip install .
 ```
 
 ## Development

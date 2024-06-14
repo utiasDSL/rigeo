@@ -289,18 +289,6 @@ def main():
         assert poly.can_realize(params_poly)
         results["polyhedron"]["num_feasible"] += 1
 
-    # save the results
-    # if args.save:
-    #     traj = "planar" if args.planar else "full"
-    #     box = "_box" if args.bounding_box else ""
-    #     w = data["vel_noise_width"]
-    #     b = data["vel_noise_bias"]
-    #     outfile = Path(args.infile).parent / f"regress_w{w}_b{b}_{traj}{box}.pkl"
-    #
-    #     with open(outfile, "wb") as f:
-    #         pickle.dump(results, f)
-    #     print(f"Saved results to {outfile}")
-
     with open(args.outfile, "wb") as f:
         pickle.dump(results, f)
     print(f"Saved results to {args.outfile}")
