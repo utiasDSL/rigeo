@@ -86,7 +86,7 @@ def rejection_sample(actual_shapes, bounding_shape, sample_shape, max_tries=1000
         sample_shape = (sample_shape,)
     sample_shape = tuple(sample_shape)
 
-    n = np.product(sample_shape)
+    n = np.prod(sample_shape)
     full = np.zeros(n, dtype=bool)
     points = np.zeros((n, 3))
     m = 0

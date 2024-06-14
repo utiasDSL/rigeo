@@ -720,7 +720,7 @@ class Box(ConvexPolyhedron):
     @property
     def volume(self):
         """The volume of the box."""
-        return np.product(self.side_lengths)
+        return np.prod(self.side_lengths)
 
     @property
     def diaglen(self):
@@ -731,7 +731,7 @@ class Box(ConvexPolyhedron):
         """These random points are *uniformly distributed* within the box."""
         if np.isscalar(shape):
             shape = (shape,)
-        n = np.product(shape)
+        n = np.prod(shape)
 
         points = 2 * (np.random.random((n, 3)) - 0.5) * self.half_extents
         points = (self.rotation @ points.T).T + self.center
@@ -922,7 +922,7 @@ class Ellipsoid(Shape):
     @property
     def volume(self):
         """The volume of the ellipsoid."""
-        return 4 * np.pi * np.product(self.half_extents) / 3
+        return 4 * np.pi * np.prod(self.half_extents) / 3
 
     def __repr__(self):
         return f"Ellipsoid(half_extents={self.half_extents}, center={self.center}, rotation={self.rotation})"
