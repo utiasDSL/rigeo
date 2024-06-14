@@ -32,7 +32,7 @@ def test_must_contain():
     objective = cp.Maximize(point[0])
     constraints = cylinder.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5)
 
 
@@ -49,7 +49,7 @@ def test_aabb():
     for v in vecs:
         objective = cp.Maximize(v @ p)
         problem = cp.Problem(objective, constraints)
-        problem.solve()
+        problem.solve(solver=cp.MOSEK)
         assert box.contains(p.value, tol=1e-7)
 
 

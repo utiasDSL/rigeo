@@ -18,7 +18,7 @@ def test_can_realize():
         points = poly.random_points(n)
         masses = np.random.random(n)
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-        assert poly.can_realize(params)
+        assert poly.can_realize(params, solver=cp.MOSEK)
 
 
 def test_tetrahedron_can_realize():
@@ -34,22 +34,22 @@ def test_tetrahedron_can_realize():
         points = poly.random_points(n)
         masses = np.random.random(n)
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-        assert poly.can_realize(params)
+        assert poly.can_realize(params, solver=cp.MOSEK)
 
     # test some infeasible cases too
     masses = [0.5, 0.5]
 
     points = np.array([[0, 0, 0], [1.1, 0, 0]])
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not poly.can_realize(params)
+    assert not poly.can_realize(params, solver=cp.MOSEK)
 
     points = np.array([[0, 0, 0], [0, 1.1, 0]])
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not poly.can_realize(params)
+    assert not poly.can_realize(params, solver=cp.MOSEK)
 
     points = np.array([[0, 0, 0], [0, 0, 1.1]])
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not poly.can_realize(params)
+    assert not poly.can_realize(params, solver=cp.MOSEK)
 
 
 def test_tetrahedron_must_realize_pim():
@@ -63,7 +63,7 @@ def test_tetrahedron_must_realize_pim():
     # need a mass constraint to bound the problem
     constraints = poly.must_realize(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
 
     # H_xx is maximized by splitting mass between the face at x = -0.5 and the
     # vertex at x = 0.5
@@ -82,6 +82,6 @@ def test_tetrahedron_must_realize_vec():
     # need a mass constraint to bound the problem
     constraints = poly.must_realize(θ) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
 
     assert np.isclose(objective.value, 0.5**2)

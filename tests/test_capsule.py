@@ -13,14 +13,14 @@ def test_must_contain():
     objective = cp.Maximize(point[2])
     constraints = cap.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.allclose(point.value, [0, 0, 0.5 * cap.full_length])
 
     # transverse direction (point is not in one of the spheres)
     objective = cp.Maximize(point[0])
     constraints = cap.must_contain(point) + [point[2] == 0]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, cap.radius)
 
     # with scale
@@ -30,7 +30,7 @@ def test_must_contain():
     objective = cp.Maximize(h[2])
     constraints = cap.must_contain(h, scale=m) + [m >= 0, m <= 2]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, cap.full_length)
 
 

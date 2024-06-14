@@ -107,7 +107,7 @@ def test_must_contain():
     objective = cp.Maximize(point[0])
     constraints = poly.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 1.0)
 
 

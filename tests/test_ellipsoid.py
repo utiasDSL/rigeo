@@ -163,7 +163,7 @@ def test_must_contain():
     objective = cp.Maximize(point[0])
     constraints = ell.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 1.0)
 
     # with scale
@@ -173,7 +173,7 @@ def test_must_contain():
     objective = cp.Maximize(h[0])
     constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 1.0)
 
     # offset and smaller radius
@@ -182,7 +182,7 @@ def test_must_contain():
     objective = cp.Maximize(h[0])
     constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 1.5)
 
     # make mass h and mass general cvxpy expressions
@@ -195,7 +195,7 @@ def test_must_contain():
     objective = cp.Maximize(h[0])
     constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 1.5)
 
 
@@ -209,13 +209,13 @@ def test_must_contain_degenerate():
     objective = cp.Maximize(point[0])
     constraints = ell.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5)
 
     objective = cp.Maximize(point[2])
     constraints = ell.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.0, rtol=0, atol=1e-7)
 
 
@@ -226,7 +226,7 @@ def test_must_contain_degenerate():
     objective = cp.Maximize(h[2])
     constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.0, rtol=0, atol=5e-7)
 
     # infinite half extent
@@ -238,13 +238,13 @@ def test_must_contain_degenerate():
     objective = cp.Maximize(h[0])
     constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5)
 
     objective = cp.Maximize(h[2])
     constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert problem.status == "unbounded"
 
 
@@ -259,21 +259,21 @@ def test_must_contain_degenerate_rotated():
     objective = cp.Maximize(point[1])
     constraints = ell.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5)
 
     # max x is reduced
     objective = cp.Maximize(point[0])
     constraints = ell.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.25 * np.sqrt(2))
 
     # max z is not zero anymore: it is same as x
     objective = cp.Maximize(point[2])
     constraints = ell.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.25 * np.sqrt(2))
 
     # infinite half extent
@@ -283,21 +283,21 @@ def test_must_contain_degenerate_rotated():
     objective = cp.Maximize(point[1])
     constraints = ell.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5)
 
     # max x is infinite
     objective = cp.Maximize(point[0])
     constraints = ell.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert problem.status == "unbounded"
 
     # max z is also infinite
     objective = cp.Maximize(point[2])
     constraints = ell.must_contain(point)
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert problem.status == "unbounded"
 
 
@@ -357,7 +357,7 @@ def test_aabb():
     for v in vecs:
         objective = cp.Maximize(v @ p)
         problem = cp.Problem(objective, constraints)
-        problem.solve()
+        problem.solve(solver=cp.MOSEK)
         assert box.contains(p.value)
 
 
@@ -381,7 +381,7 @@ def test_mbb():
     for v in vecs:
         objective = cp.Maximize(v @ p)
         problem = cp.Problem(objective, constraints)
-        problem.solve()
+        problem.solve(solver=cp.MOSEK)
         assert box.contains(p.value)
 
 

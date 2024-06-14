@@ -95,7 +95,7 @@ def test_disk_must_realize():
     # need a mass constraint to bound the problem
     constraints = disk.must_realize(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 1.0)
 
     # now try offset from the origin
@@ -109,5 +109,5 @@ def test_disk_must_realize():
     # need a mass constraint to bound the problem
     constraints = disk.must_realize(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 1.0)

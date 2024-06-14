@@ -27,12 +27,12 @@ def test_cylinder_at_origin():
 
         masses = np.random.random(points.shape[0])
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-        assert cylinder.can_realize(params)
+        assert cylinder.can_realize(params, solver=cp.MOSEK)
 
     points = np.array([[0, 0.5, 0.5], [0, -0.5, -0.5]])
     masses = [0.5, 0.5]
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert cylinder.can_realize(params)
+    assert cylinder.can_realize(params, solver=cp.MOSEK)
 
     # fmt: off
     points = 0.5 * np.array([
@@ -41,13 +41,13 @@ def test_cylinder_at_origin():
     # fmt: on
     masses = np.ones(8)
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert cylinder.can_realize(params)
+    assert cylinder.can_realize(params, solver=cp.MOSEK)
 
     # infeasible cases
     points = 1.1 * np.array([[0, 0.5, 0.5], [0, -0.5, -0.5]])
     masses = [0.5, 0.5]
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not cylinder.can_realize(params)
+    assert not cylinder.can_realize(params, solver=cp.MOSEK)
 
     points = 0.6 * np.array([
         [1., 0, 1], [0, 1, 1], [-1, 0, 1], [0, -1, 1],
@@ -55,7 +55,7 @@ def test_cylinder_at_origin():
     # fmt: on
     masses = np.ones(8)
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not cylinder.can_realize(params)
+    assert not cylinder.can_realize(params, solver=cp.MOSEK)
 
 
 def test_cylinder_must_realize():
@@ -69,12 +69,12 @@ def test_cylinder_must_realize():
     # need a mass constraint to bound the problem
     constraints = cylinder.must_realize(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.25)
 
     objective = cp.Maximize(J[2, 2])
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.25)
 
     # now try offset from the origin
@@ -86,7 +86,7 @@ def test_cylinder_must_realize():
     objective = cp.Maximize(J[0, 0])
     constraints = cylinder.must_realize(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
-    problem.solve()
+    problem.solve(solver=cp.MOSEK)
 
     # optimum is obtained by putting the CoM at the maximum x-position
     assert np.isclose(objective.value, 1.5**2)
