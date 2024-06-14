@@ -35,10 +35,7 @@ def main():
     args = parser.parse_args()
 
     # compile the URDF
-    xacro_doc = XacroDoc.from_package_file(
-        package_name="rigeo",
-        relative_path=f"urdf/threelink_{args.shape}.urdf.xacro",
-    )
+    xacro_doc = XacroDoc.from_file(f"urdf/threelink_{args.shape}.urdf.xacro")
 
     pyb.connect(pyb.GUI)
     pyb.setAdditionalSearchPath(pybullet_data.getDataPath())
