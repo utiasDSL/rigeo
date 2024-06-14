@@ -33,7 +33,5 @@ def main():
     print_medians(results, "Objective", "objective_values")
     print_medians(results, "Num feasible", "num_feasible")
 
-    # IPython.embed()
-
 
 main()

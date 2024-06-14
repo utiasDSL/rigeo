@@ -10,8 +10,6 @@ import tqdm
 
 import rigeo as rg
 
-import IPython
-
 
 TRAIN_TEST_SPLIT = 0.5
 TRAIN_WITH_NOISY_MOTION = False

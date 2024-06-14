@@ -8,8 +8,6 @@ import matplotlib.pyplot as plt
 import seaborn
 import numpy as np
 
-import IPython
-
 
 # FIGURE_PATH = "figures/single_body_plot.pdf"
 FIGURE_PATH = "/home/adam/phd/papers/rigeo/heins-wafr24/tex/current/figures/single_body_plot.pdf"

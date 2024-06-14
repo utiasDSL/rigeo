@@ -7,8 +7,6 @@ import numpy as np
 
 import rigeo as rg
 
-import IPython
-
 # noise
 VEL_NOISE_WIDTH = 0
 VEL_NOISE_BIAS = 0

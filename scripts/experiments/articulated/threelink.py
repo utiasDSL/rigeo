@@ -9,8 +9,6 @@ import tqdm
 from xacrodoc import XacroDoc
 import rigeo as rg
 
-import IPython
-
 NUM_TRIALS = 10
 RECORDING_TIMESTEP = 0.1
 GRAVITY = np.array([0, 0, -9.81])
@@ -107,13 +105,12 @@ def main():
     args = parser.parse_args()
 
     # compile the URDF
-    xacro_doc = XacroDoc.from_package_file(
-        package_name="rigeo",
-        relative_path=f"urdf/threelink_{args.shape}.urdf.xacro",
-    )
+    xacro_doc = XacroDoc.from_file(f"urdf/threelink_{args.shape}.urdf.xacro")
 
     # load Pinocchio model
-    multi = rg.MultiBody.from_urdf_string(xacro_doc.to_urdf_string(), gravity=GRAVITY)
+    multi = rg.MultiBody.from_urdf_string(
+        xacro_doc.to_urdf_string(), gravity=GRAVITY
+    )
 
     joints = ["link1_joint", "link2_joint", "link3_joint"]
     bodies = multi.get_bodies(joints)
@@ -137,7 +134,9 @@ def main():
 
         Ys = []
         for i in range(n):
-            Ys.append(multi.compute_joint_torque_regressor(qs[i], vs[i], as_[i]))
+            Ys.append(
+                multi.compute_joint_torque_regressor(qs[i], vs[i], as_[i])
+            )
         Ys = np.array(Ys)
 
         # partition data
@@ -240,12 +239,18 @@ def main():
         # validation errors
         results["nominal"]["validation_errors"].append(
             rg.validation_rmse(
-                Ys_test, τs_test, np.concatenate([p.vec for p in params_nom]), W=None
+                Ys_test,
+                τs_test,
+                np.concatenate([p.vec for p in params_nom]),
+                W=None,
             )
         )
         results["ellipsoid"]["validation_errors"].append(
             rg.validation_rmse(
-                Ys_test, τs_test, np.concatenate([p.vec for p in params_ell]), W=None
+                Ys_test,
+                τs_test,
+                np.concatenate([p.vec for p in params_ell]),
+                W=None,
             )
         )
         results["ell_com"]["validation_errors"].append(
@@ -258,7 +263,10 @@ def main():
         )
         results["polyhedron"]["validation_errors"].append(
             rg.validation_rmse(
-                Ys_test, τs_test, np.concatenate([p.vec for p in params_poly]), W=None
+                Ys_test,
+                τs_test,
+                np.concatenate([p.vec for p in params_poly]),
+                W=None,
             )
         )
 
@@ -303,9 +311,9 @@ def main():
         results["polyhedron"]["num_feasible"] += 1
 
     # save the results
-    with open(args.outfile, "wb") as f:
-        pickle.dump(results, f)
-    print(f"Saved results to {args.outfile}")
+    # with open(args.outfile, "wb") as f:
+    #     pickle.dump(results, f)
+    # print(f"Saved results to {args.outfile}")
 
 
 main()

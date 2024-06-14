@@ -7,8 +7,6 @@ import numpy as np
 
 import rigeo as rg
 
-import IPython
-
 
 # number of random parameter sets to generate
 NUM_PARAMS = 10

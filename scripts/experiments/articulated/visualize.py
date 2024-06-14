@@ -12,8 +12,6 @@ import pyb_utils
 from xacrodoc import XacroDoc
 import rigeo as rg
 
-import IPython
-
 
 SIM_FREQ = 100
 SIM_STEP = 1. / SIM_FREQ
@@ -69,8 +67,6 @@ def main():
         pyb.stepSimulation()
         t += SIM_STEP
         time.sleep(SIM_STEP)
-
-    IPython.embed()
 
 
 main()

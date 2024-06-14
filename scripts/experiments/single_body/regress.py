@@ -12,8 +12,6 @@ import tqdm
 
 import rigeo as rg
 
-import IPython
-
 
 # fraction of data to be used for training (vs. testing)
 TRAIN_TEST_SPLIT = 0.5
@@ -245,13 +243,6 @@ def main():
         results["polyhedron"]["validation_errors"].append(
             rg.validation_rmse(Ys_test, ws_test, params_poly.vec, W=None)
         )
-
-        # if (
-        #     results["polyhedron"]["validation_errors"][-1]
-        #     / results["nominal"]["validation_errors"][-1]
-        #     > 1.2
-        # ):
-        #     IPython.embed()
 
         # objective values
         results["no_noise"]["objective_values"].append(res_noiseless.objective)
