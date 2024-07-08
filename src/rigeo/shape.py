@@ -14,11 +14,7 @@ from .random import random_weight_vectors, random_points_in_ball, rejection_samp
 from .inertial import InertialParameters
 
 
-# set to True to use experimental trace constraints for box and cylinder
-# realizability, respectively
-USE_BOX_TRACE_REALIZABILITY_CONSTRAINTS = False
-USE_CYLINDER_TRACE_REALIZABILITY_CONSTRAINTS = False
-
+# set to True to use alternative trace constraints for degenerate ellipsoids
 USE_ELLIPSOID_TRACE_REALIZABILITY_CONSTRAINTS = False
 
 
@@ -822,28 +818,6 @@ class Box(ConvexPolyhedron):
         """
         return ConvexPolyhedron.from_vertices(self.vertices)
 
-    def can_realize(self, params, eps=0, **kwargs):
-        if not USE_BOX_TRACE_REALIZABILITY_CONSTRAINTS:
-            return super().can_realize(params, eps=eps, **kwargs)
-
-        if not params.consistent(eps=eps):
-            return False
-        return np.all(
-            [
-                np.trace(U.T @ params.J @ U @ E.Q) >= 0
-                for E, U in zip(self._ellipsoids, self._Us)
-            ]
-        )
-
-    def must_realize(self, param_var, eps=0):
-        if not USE_BOX_TRACE_REALIZABILITY_CONSTRAINTS:
-            return super().must_realize(param_var, eps=eps)
-
-        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-        return psd_constraints + [
-            cp.trace(U.T @ J @ U @ E.Q) >= 0 for E, U in zip(self._ellipsoids, self._Us)
-        ]
-
     def uniform_density_params(self, mass):
         """Generate the inertial parameters corresponding to a uniform mass density.
 
@@ -1371,14 +1345,6 @@ class Cylinder(Shape):
         if not params.consistent(eps=eps):
             return False
 
-        if USE_CYLINDER_TRACE_REALIZABILITY_CONSTRAINTS:
-            return np.all(
-                [
-                    np.trace(U.T @ params.J @ U @ E.Q) >= 0
-                    for E, U in zip(self._ellipsoids, self._Us)
-                ]
-            )
-
         J = cp.Variable((4, 4), PSD=True)
 
         objective = cp.Minimize([0])  # feasibility problem
@@ -1389,12 +1355,6 @@ class Cylinder(Shape):
 
     def must_realize(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-
-        if USE_CYLINDER_TRACE_REALIZABILITY_CONSTRAINTS:
-            return psd_constraints + [
-                cp.trace(U.T @ params.J @ U @ E.Q) >= 0
-                for E, U in zip(self._ellipsoids, self._Us)
-            ]
 
         Js = [cp.Variable((4, 4), PSD=True) for _ in self.disks]
         J_sum = cp.Variable((4, 4), PSD=True)
