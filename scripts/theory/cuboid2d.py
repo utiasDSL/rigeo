@@ -2,6 +2,8 @@ import numpy as np
 import cvxpy as cp
 import rigeo as rg
 
+import IPython
+
 
 def move_mass_out_counterexample():
     """2D example that shows that moving mass outside the shape does not
@@ -27,7 +29,7 @@ def cuboid_trace_counterexample():
     x = 1
     y = 1
     xy = x * y
-    verts = np.array([[x, y], [-x, y], [-y, x], [-x, -y]])
+    verts = np.array([[x, y], [-x, y], [x, -y], [-x, -y]])
 
     # solve for a particular value that satisfies the trace inequalities
     J = cp.Variable((3, 3), PSD=True)
@@ -83,4 +85,69 @@ def cuboid_trace_counterexample():
     assert problem.status == "infeasible"
 
 
-cuboid_trace_counterexample()
+def Hxy_range():
+    """TODO: in progress"""
+    x = 1
+    y = 1
+    xy = x * y
+    verts = np.array([[x, y], [-x, y], [x, -y], [-x, -y]])
+    # verts = np.array([[x, y], [-x, y], [x, -y]])  # triangle
+
+    h = np.array([0, 0])
+    # H = np.array([[1, Hxy], [Hxy, 1]])
+
+    J = cp.Variable((3, 3), PSD=True)
+
+    # find max Hxy
+    μ = cp.Variable(4)
+    objective = cp.Maximize(J[0, 1])
+    constraints = [
+        J[:2, :2]
+        << cp.sum([μi * np.outer(vi, vi) for μi, vi in zip(μ, verts)]),
+        J[:2, 2] == h,
+        J[2, 2] == 1,
+        h == cp.sum([μi * vi for μi, vi in zip(μ, verts)]),
+        cp.sum(μ) == 1,
+        μ >= 0,
+    ]
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+
+    Hxy_max = J.value[0, 1]
+
+    objective = cp.Minimize(J[0, 1])
+    problem = cp.Problem(objective, constraints)
+    problem.solve()
+
+    Hxy_min = J.value[0, 1]
+
+    Hxy_values = np.linspace(Hxy_min, Hxy_max, 21)
+    for Hxy in Hxy_values:
+        # TODO this is still not general
+        H = np.array([[1, Hxy], [Hxy, 1]])
+
+        # if it is, see if we can realize just by considering point masses at
+        # the vertices
+        # this would mean we can always exactly eliminate the off-diagonal term
+        # in H - H' and only have a positive diagonal, which is obviously p.s.d.
+        if problem.status == "optimal":
+            μ = cp.Variable(4)
+            objective = cp.Minimize(0)
+            constraints = [
+                H == cp.sum([μi * np.outer(vi, vi) for μi, vi in zip(μ, verts)]),
+                h == cp.sum([μi * vi for μi, vi in zip(μ, verts)]),
+                cp.sum(μ) == 1,
+                μ >= 0,
+            ]
+            problem = cp.Problem(objective, constraints)
+            problem.solve()
+            if problem.status == "infeasible":
+                print(f"failed for Hxy = {Hxy}")
+        else:
+            print(f"initial prob infeasible for Hxy = {Hxy}")
+
+    IPython.embed()
+
+
+# cuboid_trace_counterexample()
+Hxy_range()
