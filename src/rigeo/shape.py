@@ -689,7 +689,7 @@ class Box(ConvexPolyhedron):
     @classmethod
     def from_side_lengths(cls, side_lengths, center=None, rotation=None):
         """Construct a box with given side lengths."""
-        return cls(0.5 * side_lengths, center=center, rotation=rotation)
+        return cls(0.5 * np.array(side_lengths), center=center, rotation=rotation)
 
     @classmethod
     def from_two_vertices(cls, v1, v2):
