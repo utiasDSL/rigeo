@@ -147,7 +147,3 @@ def Hxy_range():
             print(f"initial prob infeasible for Hxy = {Hxy}")
 
     IPython.embed()
-
-
-# cuboid_trace_counterexample()
-Hxy_range()

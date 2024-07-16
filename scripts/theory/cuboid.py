@@ -43,6 +43,8 @@ def different_Hs():
         masses=masses4, points=points4
     )
 
+    IPython.embed()
+
 
 def lp_conjecture():
     """Testing the conjecture that density realizability for cuboids can
@@ -50,10 +52,12 @@ def lp_conjecture():
     programming."""
     np.random.seed(0)
     mass = 1
-    box = rg.Box(half_extents=[0.5, 1, 2])
+    box = rg.Box(half_extents=[1, 2, 4])
+    Vs = [np.outer(v, v) for v in box.vertices]
+    V0s = [np.outer(v - box.center, v - box.center) for v in box.vertices]
     d = mass * box.half_extents**2
 
-    n = 10
+    n = 4
 
     for _ in range(1000):
         # random density realizable parameters
@@ -63,9 +67,6 @@ def lp_conjecture():
         params = rg.InertialParameters.from_point_masses(
             masses=masses, points=points
         )
-
-        h = mass * box.random_points(1)
-        Vs = [np.outer(v, v) for v in box.vertices]
 
         μ = cp.Variable(8)
         H = cp.sum([μi * V for μi, V in zip(μ, Vs)])
@@ -88,22 +89,42 @@ def lp_conjecture():
             IPython.embed()
 
         Hopt = sum([μi * V for μi, V in zip(μ.value, Vs)])
+        # Hopt2 = sum([μi * V for μi, V in zip(μ.value, V0s)])
 
         # diagonal is always the same
         assert np.allclose(np.diag(Hopt), d)
 
-        # NOTE: here I tried to just solve the least squares solution to see if
-        # this always worked, but it does not
-        # A0 = np.vstack([[V[0, 1], V[0, 2], V[1, 2]] for V in Vs]).T
-        # A = np.vstack([A0, box.vertices.T, np.ones(8)])
-        # b = np.array([params.H[0, 1], params.H[0, 2], params.H[1, 2], h[0], h[1], h[2], mass])
-        #
-        # x = np.linalg.lstsq(A, b, rcond=None)[0]
-        # Hopt2 = sum([xi * V for xi, V in zip(x, Vs)])
-        # if not np.all(x >= 0):
-        #     print("negative!")
+        # NOTE: here I tried to just solve using an extra constraint, but this
+        # did not work
+        A0 = np.vstack([[V[0, 1], V[0, 2], V[1, 2]] for V in Vs]).T
+        A = np.vstack([[0, 1, 0, 0, 0, 0, 0, 0], A0, box.vertices.T, np.ones(8)])
+        b = np.array(
+            [
+                1./8,
+                params.H[0, 1],
+                params.H[0, 2],
+                params.H[1, 2],
+                params.h[0],
+                params.h[1],
+                params.h[2],
+                mass,
+            ]
+        )
 
-        # IPython.embed()
-        # return
+        x = np.linalg.solve(A, b)
+        # Hopt2 = sum([xi * V for xi, V in zip(x, Vs)])
+        if not np.all(x >= 0):
+            print("negative!")
+            IPython.embed()
+            return
+        else:
+            print("success")
+            IPython.embed()
+            return
+
+        IPython.embed()
+        return
+
 
 lp_conjecture()
+# max_min_eig_inertia()
