@@ -694,6 +694,8 @@ class Box(ConvexPolyhedron):
     @classmethod
     def from_two_vertices(cls, v1, v2):
         """Construct an axis-aligned box from two opposed vertices."""
+        v1 = np.array(v1)
+        v2 = np.array(v2)
         center = 0.5 * (v1 + v2)
         half_extents = 0.5 * (np.maximum(v1, v2) - np.minimum(v1, v2))
         return cls(half_extents, center=center)
@@ -1200,7 +1202,7 @@ class Ellipsoid(Shape):
             half_extents=half_extents, rotation=new_rotation, center=center
         )
 
-    def contains_ellipsoid(self, other):
+    def contains_ellipsoid(self, other, solver=None):
         # See Boyd and Vandenberghe pp. 411
         # TODO does not work for degenerate ellipsoids
         t = cp.Variable(1)
@@ -1215,21 +1217,13 @@ class Ellipsoid(Shape):
             << 0,
         ]
         problem = cp.Problem(objective, constraints)
-        problem.solve()
+        problem.solve(solver=solver)
         return problem.status == "optimal"
 
     def uniform_density_params(self, mass):
         assert mass >= 0, "Mass must be non-negative."
 
         H = mass * np.diag(self.half_extents**2) / 5.0
-        return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
-            rotation=self.rotation, translation=self.center
-        )
-
-    def hollow_density_params(self, mass):
-        assert mass >= 0, "Mass must be non-negative."
-
-        H = mass * np.diag(self.half_extents**2) / 3.0
         return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
             rotation=self.rotation, translation=self.center
         )
