@@ -10,7 +10,12 @@ from scipy.linalg import orth, sqrtm, null_space
 from .polydd import SpanForm, FaceForm
 from .util import clean_transform
 from .constraint import schur, pim_must_equal_param_var
-from .random import random_weight_vectors, random_points_in_ball, rejection_sample
+from .random import (
+    random_weight_vectors,
+    random_points_in_ball,
+    rejection_sample,
+    random_points_on_hypersphere,
+)
 from .inertial import InertialParameters
 
 
@@ -91,7 +96,9 @@ def _mie_inequality_form(A, b, sphere=False, solver=None):
     c = cp.Variable(dim)
 
     objective = cp.Maximize(cp.log_det(B))
-    constraints = [cp.norm2(B @ A[i, :]) + A[i, :] @ c <= b[i] for i in range(n)]
+    constraints = [
+        cp.norm2(B @ A[i, :]) + A[i, :] @ c <= b[i] for i in range(n)
+    ]
     if sphere:
         # if we want a sphere, then A is a multiple of the identity matrix
         r = cp.Variable(1)
@@ -432,9 +439,9 @@ class ConvexPolyhedron(Shape):
     def is_same(self, other, tol=1e-8):
         if not isinstance(other, self.__class__):
             return False
-        return self.contains_polyhedron(other, tol=tol) and other.contains_polyhedron(
-            self, tol=tol
-        )
+        return self.contains_polyhedron(
+            other, tol=tol
+        ) and other.contains_polyhedron(self, tol=tol)
 
     def random_points(self, shape=1):
         # NOTE: this is not uniform sampling!
@@ -452,7 +459,9 @@ class ConvexPolyhedron(Shape):
 
     def mbe(self, rcond=None, sphere=False, solver=None):
         """Construct the minimum-volume bounding ellipsoid for this polyhedron."""
-        return mbe_of_points(self.vertices, rcond=rcond, sphere=sphere, solver=solver)
+        return mbe_of_points(
+            self.vertices, rcond=rcond, sphere=sphere, solver=solver
+        )
 
     # def mie(self, rcond=None, sphere=False, solver=None):
     #     """Construct the maximum-volume ellipsoid inscribed in this polyhedron."""
@@ -489,7 +498,9 @@ class ConvexPolyhedron(Shape):
         rotation = np.hstack((R @ ell.rotation, N))
 
         center = R @ ell.center + r
-        return Ellipsoid(half_extents=half_extents, rotation=rotation, center=center)
+        return Ellipsoid(
+            half_extents=half_extents, rotation=rotation, center=center
+        )
 
     def intersect(self, other):
         """Intersect this polyhedron with another one.
@@ -597,7 +608,9 @@ class ConvexPolyhedron(Shape):
         assert masses.shape == (self.nv,)
         assert np.all(masses >= 0)
 
-        return InertialParameters.from_point_masses(masses=masses, points=self.vertices)
+        return InertialParameters.from_point_masses(
+            masses=masses, points=self.vertices
+        )
 
 
 def Simplex(extents):
@@ -665,20 +678,6 @@ class Box(ConvexPolyhedron):
         vertices = _box_vertices(self.half_extents, self.center, self.rotation)
         super().__init__(span_form=SpanForm(vertices))
 
-        # build the lower-dimensional ellipsoids for checking realizability
-        self._ellipsoids = []
-        self._Us = []
-        for i, r in enumerate(self.half_extents):
-            u = self.rotation[i, :]
-
-            ell = Ellipsoid(half_extents=r, center=u @ self.center)
-            self._ellipsoids.append(ell)
-
-            U = np.zeros((4, 2))
-            U[:3, 0] = u
-            U[3, 1] = 1
-            self._Us.append(U)
-
     @classmethod
     def cube(cls, half_extent, center=None, rotation=None):
         """Construct a cube."""
@@ -689,7 +688,9 @@ class Box(ConvexPolyhedron):
     @classmethod
     def from_side_lengths(cls, side_lengths, center=None, rotation=None):
         """Construct a box with given side lengths."""
-        return cls(0.5 * np.array(side_lengths), center=center, rotation=rotation)
+        return cls(
+            0.5 * np.array(side_lengths), center=center, rotation=rotation
+        )
 
     @classmethod
     def from_two_vertices(cls, v1, v2):
@@ -773,7 +774,9 @@ class Box(ConvexPolyhedron):
         new_rotation = rotation @ self.rotation
         new_center = rotation @ self.center + translation
         half_extents = self.half_extents.copy()
-        return Box(half_extents=half_extents, center=new_center, rotation=new_rotation)
+        return Box(
+            half_extents=half_extents, center=new_center, rotation=new_rotation
+        )
 
     def rotate_about_center(self, rotation):
         """Rotate the box about its center point.
@@ -792,14 +795,18 @@ class Box(ConvexPolyhedron):
         new_rotation = rotation @ self.rotation
         center = self.center.copy()
         half_extents = self.half_extents.copy()
-        return Box(half_extents=half_extents, center=center, rotation=new_rotation)
+        return Box(
+            half_extents=half_extents, center=center, rotation=new_rotation
+        )
 
     def mie(self, rcond=None, sphere=False, solver=None):
         if sphere:
             radius = np.min(self.half_extents)
             return Ellipsoid.sphere(radius=radius, center=self.center)
         return Ellipsoid(
-            half_extents=self.half_extents, center=self.center, rotation=self.rotation
+            half_extents=self.half_extents,
+            center=self.center,
+            rotation=self.rotation,
         )
 
     def mbe(self, rcond=None, sphere=False, solver=None):
@@ -808,7 +815,9 @@ class Box(ConvexPolyhedron):
             radius = np.max(half_extents)
             return Ellipsoid.sphere(radius=radius, center=self.center)
         return Ellipsoid(
-            half_extents=half_extents, center=self.center, rotation=self.rotation
+            half_extents=half_extents,
+            center=self.center,
+            rotation=self.rotation,
         )
 
     def as_poly(self):
@@ -860,7 +869,9 @@ class Ellipsoid(Shape):
             half_extents = [half_extents]
         self.half_extents = np.array(half_extents)
 
-        assert np.all(self.half_extents >= 0), "Half extents cannot be negative."
+        assert np.all(
+            self.half_extents >= 0
+        ), "Half extents cannot be negative."
         # assert np.all(np.isfinite(self.half_extents)), "Half extents must be finite."
 
         self.half_extents_inv = _inv_with_zeros(self.half_extents)
@@ -884,7 +895,11 @@ class Ellipsoid(Shape):
     @property
     def S(self):
         """Shape matrix."""
-        return self.rotation @ np.diag(self.half_extents_inv**2) @ self.rotation.T
+        return (
+            self.rotation
+            @ np.diag(self.half_extents_inv**2)
+            @ self.rotation.T
+        )
 
     @property
     def E(self):
@@ -989,7 +1004,9 @@ class Ellipsoid(Shape):
 
         # non-zero directions treated normally
         # TODO is this correct?
-        nonzero_axes = self.half_extents_inv[~zero_mask] * self.rotation[:, ~zero_mask]
+        nonzero_axes = (
+            self.half_extents_inv[~zero_mask] * self.rotation[:, ~zero_mask]
+        )
         nonzero_Q = _Q_matrix(nonzero_axes @ nonzero_axes.T, self.center)
 
         # zero directions must have no spread in the mass distribution
@@ -1068,7 +1085,9 @@ class Ellipsoid(Shape):
             ps = (points - self.center) @ self.rotation
 
             # degenerate dimensions
-            res1 = np.all(np.isclose(ps[:, zero_mask], 0, rtol=0, atol=tol), axis=1)
+            res1 = np.all(
+                np.isclose(ps[:, zero_mask], 0, rtol=0, atol=tol), axis=1
+            )
 
             # nondegenerate dimensions
             res2 = np.array(
@@ -1148,7 +1167,9 @@ class Ellipsoid(Shape):
     def mbb(self):
         """Minimum-volume bounding box."""
         return Box(
-            half_extents=self.half_extents, center=self.center, rotation=self.rotation
+            half_extents=self.half_extents,
+            center=self.center,
+            rotation=self.rotation,
         )
 
     def mib(self):
@@ -1165,11 +1186,56 @@ class Ellipsoid(Shape):
         return Box.from_two_vertices(v_min, v_max)
 
     def random_points(self, shape=1):
+        # TODO currently not known if this is *uniform* sampling
         # sample points in the unit ball then affinely transform them into the
         # ellipsoid
         X = random_points_in_ball(shape=shape, dim=self.dim)
         Ainv = self.rotation @ np.diag(self.half_extents) @ self.rotation.T
         return X @ Ainv + self.center
+
+    def random_points_on(self, shape=1):
+        """Uniformly sample points on the surface of the ellipsoid.
+
+        Only non-degenerate ellipsoids are supported.
+
+        See Sec. 5.1 of https://doi.org/10.1007/s11075-023-01628-4
+        """
+        if np.isscalar(shape):
+            shape = (shape,)
+        n = np.prod(shape)  # total number of points to produce
+
+        assert np.all(self.half_extents > 0), "Ellipsoid must be non-degenerate."
+        d = 1.0 / self.half_extents**4
+
+        m = np.min(self.half_extents)
+        points = np.zeros((n, self.dim))
+        count = 0
+        while count < n:
+
+            # sample as many points as we still need
+            rem = n - count
+            p = np.atleast_2d(
+                random_points_on_hypersphere(shape=rem, dim=self.dim - 1)
+            )
+
+            # scale to match the ellipsoid's axes
+            r = p * self.half_extents
+
+            # reject some points so that the overall sampling is uniform
+            g = m * np.sqrt(np.sum(r**2 * d, axis=1))
+            u = np.random.random(rem)
+            accept = u <= g
+            n_acc = np.sum(accept)
+            points[count : count + n_acc] = r[accept, :]
+            count += n_acc
+
+        # rotate and translate points as needed
+        points = points @ self.rotation + self.center
+
+        # reshape to desired shape
+        if shape == (1,):
+            return np.squeeze(points)
+        return points.reshape(shape + (self.dim,))
 
     def transform(self, rotation=None, translation=None):
         rotation, translation = clean_transform(
@@ -1289,10 +1355,14 @@ class Cylinder(Shape):
         disk_extents = [self.radius, self.radius, 0]
         disk_centers = self.endpoints()
         disk1 = Ellipsoid(
-            half_extents=disk_extents, center=disk_centers[0], rotation=self.rotation
+            half_extents=disk_extents,
+            center=disk_centers[0],
+            rotation=self.rotation,
         )
         disk2 = Ellipsoid(
-            half_extents=disk_extents, center=disk_centers[1], rotation=self.rotation
+            half_extents=disk_extents,
+            center=disk_centers[1],
+            rotation=self.rotation,
         )
         self.disks = [disk1, disk2]
 
@@ -1416,13 +1486,17 @@ class Cylinder(Shape):
         r = self.radius / np.sqrt(2)
         half_extents = [r, r, self.length / 2]
         return Box(
-            half_extents=half_extents, rotation=self.rotation, center=self.center
+            half_extents=half_extents,
+            rotation=self.rotation,
+            center=self.center,
         )
 
     def mbb(self):
         half_extents = [self.radius, self.radius, self.length / 2]
         return Box(
-            half_extents=half_extents, rotation=self.rotation, center=self.center
+            half_extents=half_extents,
+            rotation=self.rotation,
+            center=self.center,
         )
 
     def uniform_density_params(self, mass):
@@ -1557,7 +1631,11 @@ class Capsule(Shape):
                 J[:3, 3] == J_sum[:3, 3],
                 J[:3, :3] << J_sum[:3, :3],
             ]
-            + [c for J, cap in zip(Js, self.caps) for c in cap.must_realize(J, eps=0)]
+            + [
+                c
+                for J, cap in zip(Js, self.caps)
+                for c in cap.must_realize(J, eps=0)
+            ]
         )
 
     def aabb(self):
@@ -1570,7 +1648,9 @@ class Capsule(Shape):
     def mbb(self):
         half_extents = [self.radius, self.radius, self.full_length / 2]
         return Box(
-            half_extents=half_extents, rotation=self.rotation, center=self.center
+            half_extents=half_extents,
+            rotation=self.rotation,
+            center=self.center,
         )
 
     def random_points(self, shape=1):
@@ -1728,4 +1808,6 @@ def mbe_of_points(points, rcond=None, sphere=False, solver=None):
     #     rotation = -rotation  # TODO
     center = R @ np.linalg.lstsq(A.value, -b.value, rcond=rcond)[0] + r
 
-    return Ellipsoid(half_extents=half_extents, rotation=rotation, center=center)
+    return Ellipsoid(
+        half_extents=half_extents, rotation=rotation, center=center
+    )

@@ -89,7 +89,7 @@ def test_bounding_ellipsoid_degenerate():
     )
 
     # 2D plane
-    points = np.array([[1., 0, 1], [1, 1, 1], [0, 1, 0], [0, 0, 0]])
+    points = np.array([[1.0, 0, 1], [1, 1, 1], [0, 1, 0], [0, 0, 0]])
     ell = rg.mbe_of_points(points)
     assert ell.rank == 2
     assert ell.is_degenerate()
@@ -218,7 +218,6 @@ def test_must_contain_degenerate():
     problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.0, rtol=0, atol=1e-7)
 
-
     # with scale
     h = cp.Variable(3)
     m = cp.Variable(1)
@@ -337,16 +336,61 @@ def test_random_points():
     assert np.isclose(n_box / n, mib.volume / ell.volume, rtol=0, atol=0.01)
 
 
+def test_random_points_on():
+    np.random.seed(0)
+
+    ell = rg.Ellipsoid(half_extents=[2, 1, 0.5], center=[1, 0, 1])
+
+    # one point
+    point = ell.random_points_on()
+    assert point.shape == (3,)
+
+    # check the point is actually on the surface
+    x = point - ell.center
+    assert np.isclose(x @ ell.S @ x, 1.0)
+
+    # multiple points
+    points = ell.random_points_on(shape=10)
+    assert points.shape == (10, 3)
+    x = points - ell.center
+    assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
+
+    # grid of points
+    points = ell.random_points_on(shape=(10, 10))
+    assert points.shape == (10, 10, 3)
+    points = points.reshape((100, 3))
+    x = points - ell.center
+    assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
+
+    # 2D ellipsoid
+    ell = rg.Ellipsoid(half_extents=[2, 1], center=[1, 0])
+    points = ell.random_points_on(shape=10)
+    assert points.shape == (10, 2)
+    x = points - ell.center
+    assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
+
+    # 4D ellipsoid
+    ell = rg.Ellipsoid(half_extents=[2, 1, 0.5, 0.5], center=[1, 0, 1, 0])
+    points = ell.random_points_on(shape=10)
+    assert points.shape == (10, 4)
+    x = points - ell.center
+    assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
+
+
 def test_grid():
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    ell = rg.Ellipsoid(half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C)
+    ell = rg.Ellipsoid(
+        half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C
+    )
     grid = ell.grid(10)
     assert ell.contains(grid).all()
 
 
 def test_aabb():
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    ell = rg.Ellipsoid(half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C)
+    ell = rg.Ellipsoid(
+        half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C
+    )
     box = ell.aabb()
 
     # check that the point farthest along each axis (in both directions) in the
@@ -363,14 +407,18 @@ def test_aabb():
 
 def test_mib():
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    ell = rg.Ellipsoid(half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C)
+    ell = rg.Ellipsoid(
+        half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C
+    )
     box = ell.mib()
     assert ell.contains_polyhedron(box)
 
 
 def test_mbb():
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
-    ell = rg.Ellipsoid(half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C)
+    ell = rg.Ellipsoid(
+        half_extents=[1, 0.5, 0.25], center=[1, 0, 1], rotation=C
+    )
     box = ell.mbb()
 
     # check that the point farthest along each axis (in both directions) in the
