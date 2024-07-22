@@ -27,6 +27,7 @@ force-torque data.
   sets of points.
 * Compute convex hulls for degenerate sets of points (i.e., points that live in
   some lower-dimensional subspace than the ambient space).
+* Uniform random sampling inside of and on the surface of ellipsoids.
 
 ## Installation
 

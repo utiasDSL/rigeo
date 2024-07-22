@@ -1186,9 +1186,12 @@ class Ellipsoid(Shape):
         return Box.from_two_vertices(v_min, v_max)
 
     def random_points(self, shape=1):
-        # TODO currently not known if this is *uniform* sampling
-        # sample points in the unit ball then affinely transform them into the
-        # ellipsoid
+        """Uniformly sample points inside the ellipsoid.
+
+        See https://arxiv.org/abs/1404.1347
+        """
+        # uniformly sample points in the unit ball then affinely transform them
+        # into the ellipsoid
         X = random_points_in_ball(shape=shape, dim=self.dim)
         Ainv = self.rotation @ np.diag(self.half_extents) @ self.rotation.T
         return X @ Ainv + self.center
@@ -1204,7 +1207,9 @@ class Ellipsoid(Shape):
             shape = (shape,)
         n = np.prod(shape)  # total number of points to produce
 
-        assert np.all(self.half_extents > 0), "Ellipsoid must be non-degenerate."
+        assert np.all(
+            self.half_extents > 0
+        ), "Ellipsoid must be non-degenerate."
         d = 1.0 / self.half_extents**4
 
         m = np.min(self.half_extents)
