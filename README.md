@@ -7,12 +7,13 @@ applications to robotic manipulation.
 ## Density Realizable Inertial Parameters
 
 The main feature of this library is a set of necessary conditions for **density
-realizability** on various primitive shapes (included convex polyhedra,
-cylinders, and capsules). A set of inertial parameters is called density
-realizable on a given shape if they can be physically realized by some rigid
-body contained in that shape. These conditions can be included in constraints
-as semidefinite programs for inertial parameter identification for motion and
-force-torque data.
+realizability** on shapes which can be described as *convex hulls of
+ellipsoids* (which includes convex polyhedra, cylinders, and capsules). A set
+of inertial parameters (i.e., mass, center of mass, inertia matrix) is called
+*density realizable* on a given shape if they can be physically realized by
+*some* rigid body contained in that shape. These conditions can be included in
+constraints as semidefinite programs for inertial parameter identification for
+motion and force-torque data.
 
 ## Other Features
 
