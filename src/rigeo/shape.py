@@ -1292,9 +1292,52 @@ class Ellipsoid(Shape):
         return problem.status == "optimal"
 
     def uniform_density_params(self, mass):
+        """Generate the inertial parameters corresponding to a uniform mass density.
+
+        The inertial parameters are generated with respect to the origin.
+
+        Parameters
+        ----------
+        mass : float, non-negative
+            The mass of the body.
+
+        Returns
+        -------
+        : InertialParameters
+            The inertial parameters.
+        """
         assert mass >= 0, "Mass must be non-negative."
 
         H = mass * np.diag(self.half_extents**2) / 5.0
+        return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
+            rotation=self.rotation, translation=self.center
+        )
+
+    def hollow_density_params(self, mass):
+        """Generate the inertial parameters corresponding to an ellipsoid shell.
+
+        In other words, all of the mass is uniformly distributed on the surface
+        of the ellipsoid. The inertial parameters are generated with respect to
+        the origin.
+
+        Parameters
+        ----------
+        mass : float, non-negative
+            The mass of the body.
+
+        Returns
+        -------
+        : InertialParameters
+            The inertial parameters.
+        """
+        assert mass >= 0, "Mass must be non-negative."
+
+        a, b, c = self.half_extents
+        d = 5 * (a * b + a * c + b * c)
+        Hxx = a**2 * (a * b + a * c + 3 * b * c) / d
+        Hyy = b**2 * (a * b + 3 * a * c + b * c) / d
+        Hzz = c**2 * (3 * a * b + a * c + b * c) / d
+        H = np.diag([Hxx, Hyy, Hzz])
         return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
             rotation=self.rotation, translation=self.center
         )
@@ -1505,6 +1548,20 @@ class Cylinder(Shape):
         )
 
     def uniform_density_params(self, mass):
+        """Generate the inertial parameters corresponding to a uniform mass density.
+
+        The inertial parameters are generated with respect to the origin.
+
+        Parameters
+        ----------
+        mass : float, non-negative
+            The mass of the body.
+
+        Returns
+        -------
+        : InertialParameters
+            The inertial parameters.
+        """
         assert mass >= 0, "Mass must be non-negative."
 
         Hxy = mass * self.radius**2 / 4.0

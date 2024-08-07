@@ -23,7 +23,12 @@ def ellipsoid_shell_inertia():
     nom = a2 * b2 * c2 * S2 - a * b * c * S
     den = (a + δ) * (b + δ) * (c + δ) - a * b * c
     I = (nom / den).limit(δ, 0) / 5
-    print(I)
+    print(f"I = {I}")
+
+    # compute the second moment matrix too
+    H = sympy.trace(I) * sympy.eye(3) / 2 - I
+    H.simplify()
+    print(f"H = {H}")
 
     # confirm that this is the same as the sphere when all semi-axes are equal
     r = sympy.symbols("r")
