@@ -105,3 +105,21 @@ def test_random_points():
     points = box.random_points((10, 5))
     assert points.shape == (10, 5, 3)
     assert box.contains(points.reshape((50, 3))).all()
+
+
+def test_random_points_on():
+    # TODO: this needs to be improved
+    box = rg.Box(half_extents=[1, 0.75, 0.5])
+    points = box.random_points_on(10)
+    assert box.contains(points).all()
+
+
+def test_hollow_density_params():
+    box = rg.Box(half_extents=[1, 0.75, 0.5])
+    ell = rg.Ellipsoid(half_extents=[1, 0.75, 0.5])
+
+    # the inertia for hollow boxes and ellipsoids differs by only a constant
+    # factor
+    p1 = box.hollow_density_params(mass=1.0)
+    p2 = ell.hollow_density_params(mass=1.0)
+    assert np.allclose(p1.H * 3 / 5, p2.H)

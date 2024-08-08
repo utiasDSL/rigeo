@@ -21,7 +21,7 @@ def ellipsoid_shell_inertia():
     )
 
     nom = a2 * b2 * c2 * S2 - a * b * c * S
-    den = (a + δ) * (b + δ) * (c + δ) - a * b * c
+    den = a2 * b2 * c2 - a * b * c
     I = (nom / den).limit(δ, 0) / 5
     print(f"I = {I}")
 

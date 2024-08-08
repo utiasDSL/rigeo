@@ -219,7 +219,7 @@ def optimize_random_problems():
         # generate random p.s.d. matric with eigmax <= 1
         X = 2 * np.random.random((2, 2)) - 1
         Y = X @ X.T
-        
+
         # normalize to ensure max eigenvalue is at most 1
         e_max = np.max(np.linalg.eigvals(Y))
         if e_max > 1:
@@ -227,7 +227,7 @@ def optimize_random_problems():
 
         # match the matrix using outer product of two vectors with l1 norms <= 1
         S, s1, s2 = match_matrix(Y)
-        
+
     print("success!")
     # IPython.embed()
 

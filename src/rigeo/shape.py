@@ -738,6 +738,41 @@ class Box(ConvexPolyhedron):
             return np.squeeze(points)
         return points.reshape(shape + (3,))
 
+    def random_points_on(self, shape=1):
+        """Uniformly sample points on the surface of the box."""
+        if np.isscalar(shape):
+            shape = (shape,)
+        n = np.prod(shape)
+
+        # generate some random points inside the box
+        points = self.random_points(n)
+
+        x, y, z = self.half_extents
+        Ax = 4 * y * z
+        Ay = 4 * x * z
+        Az = 4 * x * y
+        A = 2 * (Ax + Ay + Az)
+        pvals = np.array([Ax, Ax, Ay, Ay, Az, Az]) / A
+
+        # randomly project each point on one of the sides proportional to its
+        # area
+        counts = np.random.multinomial(n=n, pvals=pvals)
+        idx = np.cumsum(counts)
+        points[0 : idx[0], 0] = x
+        points[idx[0] : idx[1], 0] = -x
+        points[idx[1] : idx[2], 1] = y
+        points[idx[2] : idx[3], 1] = -y
+        points[idx[3] : idx[4], 2] = z
+        points[idx[4] :, 2] = -z
+
+        # shuffle to regain randomness w.r.t. the sides
+        np.random.shuffle(points)
+
+        points = (self.rotation @ points.T).T + self.center
+        if shape == (1,):
+            return np.squeeze(points)
+        return points.reshape(shape + (3,))
+
     def grid(self, n):
         """Generate a set of points evenly spaced in the box.
 
@@ -847,6 +882,35 @@ class Box(ConvexPolyhedron):
         assert mass >= 0, "Mass must be non-negative."
 
         H = mass * np.diag(self.half_extents**2) / 3.0
+        return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
+            rotation=self.rotation, translation=self.center
+        )
+
+    def hollow_density_params(self, mass):
+        """Generate the inertial parameters corresponding to a hollow box.
+
+        In other words, all of the mass is uniformly distributed on the surface
+        of the box. The inertial parameters are generated with respect to
+        the origin.
+
+        Parameters
+        ----------
+        mass : float, non-negative
+            The mass of the body.
+
+        Returns
+        -------
+        : InertialParameters
+            The inertial parameters.
+        """
+        assert mass >= 0, "Mass must be non-negative."
+
+        x, y, z = self.half_extents
+        d = 3 * (x * y + x * z + y * z)
+        Hxx = x**2 * (x * y + x * z + 3 * y * z) / d
+        Hyy = y**2 * (x * y + 3 * x * z + y * z) / d
+        Hzz = z**2 * (3 * x * y + x * z + y * z) / d
+        H = np.diag([Hxx, Hyy, Hzz])
         return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
             rotation=self.rotation, translation=self.center
         )
@@ -1332,11 +1396,11 @@ class Ellipsoid(Shape):
         """
         assert mass >= 0, "Mass must be non-negative."
 
-        a, b, c = self.half_extents
-        d = 5 * (a * b + a * c + b * c)
-        Hxx = a**2 * (a * b + a * c + 3 * b * c) / d
-        Hyy = b**2 * (a * b + 3 * a * c + b * c) / d
-        Hzz = c**2 * (3 * a * b + a * c + b * c) / d
+        x, y, z = self.half_extents
+        d = 5 * (x * y + x * z + y * z)
+        Hxx = x**2 * (x * y + x * z + 3 * y * z) / d
+        Hyy = y**2 * (x * y + 3 * x * z + y * z) / d
+        Hzz = z**2 * (3 * x * y + x * z + y * z) / d
         H = np.diag([Hxx, Hyy, Hzz])
         return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
             rotation=self.rotation, translation=self.center
