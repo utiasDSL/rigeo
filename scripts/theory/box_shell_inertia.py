@@ -1,8 +1,8 @@
-"""Symbolic derivation of cuboid shell inertia."""
+"""Symbolic derivation of box shell inertia."""
 import sympy
 
 
-def cuboid_shell_inertia():
+def box_shell_inertia():
     δ = sympy.symbols("δ")
     a, b, c = sympy.symbols("a, b, c")
     S = sympy.Matrix.diag(b**2 + c**2, a**2 + c**2, a**2 + b**2)
@@ -33,8 +33,8 @@ def cuboid_shell_inertia():
     return I
 
 
-def cuboid_shell_inertia_parax():
-    """Derive cuboid shell inertia using parallel axis theorem."""
+def box_shell_inertia_parax():
+    """Derive box shell inertia using parallel axis theorem."""
     # mass of each face is proportional to its area
     a, b, c = sympy.symbols("a, b, c")
     A1 = 2 * 4 * b * c
@@ -61,8 +61,8 @@ def cuboid_shell_inertia_parax():
 
 
 # check that the two derivations are equal
-I1 = cuboid_shell_inertia()
-I2 = cuboid_shell_inertia_parax()
+I1 = box_shell_inertia()
+I2 = box_shell_inertia_parax()
 diff = I2 - I1
 diff.simplify()
 assert diff == sympy.zeros(3, 3)
