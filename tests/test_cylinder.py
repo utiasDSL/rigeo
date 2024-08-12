@@ -54,34 +54,34 @@ def test_aabb():
 
 
 def test_random_points():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     cyl = rg.Cylinder(length=2, radius=0.5, center=[1, 0, 1])
 
     # one point
-    point = cyl.random_points()
+    point = cyl.random_points(rng=rng)
     assert point.shape == (3,)
     assert cyl.contains(point)
 
     # multiple points
-    points = cyl.random_points(shape=10)
+    points = cyl.random_points(shape=10, rng=rng)
     assert points.shape == (10, 3)
     assert cyl.contains(points).all()
 
     # grid of points
-    points = cyl.random_points(shape=(10, 10))
+    points = cyl.random_points(shape=(10, 10), rng=rng)
     assert points.shape == (10, 10, 3)
     assert cyl.contains(points.reshape((100, 3))).all()
 
     # grid with one dimension 1
-    points = cyl.random_points(shape=(10, 1))
+    points = cyl.random_points(shape=(10, 1), rng=rng)
     assert points.shape == (10, 1, 3)
     assert cyl.contains(points.reshape((10, 3))).all()
 
     # test that the sampling is uniform by seeing if the number of points that
     # fall in an inscribed box is proportional to its relative volume
     n = 10000
-    points = cyl.random_points(shape=n)
+    points = cyl.random_points(shape=n, rng=rng)
     mib = cyl.mib()
     n_box = np.sum(mib.contains(points))
 
@@ -102,7 +102,7 @@ def test_maximum_inscribed_box():
 
 
 def test_mbe():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
     cyl = rg.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
@@ -114,12 +114,12 @@ def test_mbe():
     assert ell.contains_polyhedron(mib)
 
     # should also contain any point in the shape
-    points = cyl.random_points(1000)
+    points = cyl.random_points(1000, rng=rng)
     assert ell.contains(points).all()
 
 
 def test_minimum_bounding_box():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     C = rotx(np.pi / 4) @ roty(np.pi / 6)
     cyl = rg.Cylinder(length=2, radius=0.5, center=[1, 0, 1], rotation=C)
@@ -131,5 +131,5 @@ def test_minimum_bounding_box():
     assert mbb.contains_polyhedron(mib)
 
     # should also contain any point in the shape
-    points = cyl.random_points(1000)
+    points = cyl.random_points(1000, rng=rng)
     assert mbb.contains(points).all()

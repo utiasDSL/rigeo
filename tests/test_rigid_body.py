@@ -105,10 +105,10 @@ def _pinocchio_regressor(V, A):
 
 def test_regressor():
     """Test body regressor implementation."""
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
-    V = 2 * np.random.random(6) - 1
-    A = 2 * np.random.random(6) - 1
+    V = rng.uniform(low=-1, high=1, size=6)
+    A = rng.uniform(low=-1, high=1, size=6)
 
     # compare to pinocchio's implementation
     Y = rg.RigidBody.regressor(V, A)

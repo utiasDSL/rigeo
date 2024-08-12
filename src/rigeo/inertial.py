@@ -177,14 +177,15 @@ class InertialParameters:
         return cls.from_pim(J)
 
     @classmethod
-    def random(cls):
+    def random(cls, rng=None):
         """Generate a random set of fully physically consistent inertial parameters.
 
         Useful for testing purposes.
         """
-        mass = 0.1 + np.random.random() * 0.9
-        com = np.random.random(3) - 0.5
-        H = random_psd_matrix(3) + mass * np.outer(com, com)
+        rng = np.random.default_rng(rng)
+        mass = 0.1 + rng.random() * 0.9
+        com = rng.random(3) - 0.5
+        H = random_psd_matrix(n=3, rng=rng) + mass * np.outer(com, com)
         return cls(mass=mass, com=com, H=H)
 
     def is_same(self, other):

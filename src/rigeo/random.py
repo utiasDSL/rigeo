@@ -2,13 +2,16 @@
 import numpy as np
 
 
-def random_psd_matrix(n):
+def random_psd_matrix(n, rng=None):
     """Generate a random symmetric positive semidefinite matrix.
 
     Parameters
     ----------
     n : int
         Dimension of the matrix.
+    rng : int or np.random.Generator
+        Integer seed or Generator instance to use for generating random
+        numbers.
 
     Returns
     -------
@@ -17,11 +20,12 @@ def random_psd_matrix(n):
     """
     # TODO: could look into doi.org/10.1109/TSP.2012.2186447 for
     # uniform-sampling of trace-constrained PSD matrices
-    A = 2 * np.random.random((n, n)) - 1
+    rng = np.random.default_rng(rng)
+    A = rng.uniform(low=-1, high=1, size=(n, n))
     return A.T @ A
 
 
-def random_weight_vectors(shape):
+def random_weight_vectors(shape, rng=None):
     """Generate a set of random vectors with non-negative entries that sum to one.
 
     Vectors sum to one along the last axis of ``shape``. Entries are uniformly
@@ -37,12 +41,13 @@ def random_weight_vectors(shape):
     : np.ndarray
         A set of weight vectors.
     """
-    w = np.random.random(shape)
+    rng = np.random.default_rng(rng)
+    w = rng.random(shape)
     s = np.expand_dims(np.sum(w, axis=-1), axis=w.ndim - 1)
     return w / s
 
 
-def random_points_on_hypersphere(shape=1, dim=2):
+def random_points_on_hypersphere(shape=1, dim=2, rng=None):
     """Sample random uniform-distributed points on the ``dim``-sphere.
 
     See https://compneuro.uwaterloo.ca/files/publications/voelker.2017.pdf
@@ -51,7 +56,9 @@ def random_points_on_hypersphere(shape=1, dim=2):
     if np.isscalar(shape):
         shape = (shape,)
     full_shape = tuple(shape) + (dim + 1,)
-    X = np.random.normal(size=full_shape)
+
+    rng = np.random.default_rng(rng)
+    X = rng.normal(size=full_shape)
 
     # make dimension compatible with X
     r = np.expand_dims(np.linalg.norm(X, axis=-1), axis=X.ndim - 1)
@@ -64,15 +71,16 @@ def random_points_on_hypersphere(shape=1, dim=2):
     return points
 
 
-def random_points_in_ball(shape=1, dim=3):
+def random_points_in_ball(shape=1, dim=3, rng=None):
     """Sample random uniform-distributed points in the ``dim``-ball.
 
     See https://compneuro.uwaterloo.ca/files/publications/voelker.2017.pdf
     """
     assert dim >= 1
 
-    s = random_points_on_hypersphere(shape=shape, dim=dim - 1)
-    c = np.expand_dims(np.random.random(shape), axis=s.ndim - 1)
+    rng = np.random.default_rng(rng)
+    s = random_points_on_hypersphere(shape=shape, dim=dim - 1, rng=rng)
+    c = np.expand_dims(rng.random(shape), axis=s.ndim - 1)
     points = c ** (1.0 / dim) * s
 
     # squeeze out extra dimension if shape = 1
@@ -81,10 +89,12 @@ def random_points_in_ball(shape=1, dim=3):
     return points
 
 
-def rejection_sample(actual_shapes, bounding_shape, sample_shape, max_tries=10000):
+def rejection_sample(actual_shapes, bounding_shape, sample_shape, max_tries=10000, rng=None):
     if np.isscalar(sample_shape):
         sample_shape = (sample_shape,)
     sample_shape = tuple(sample_shape)
+
+    rng = np.random.default_rng(rng)
 
     n = np.prod(sample_shape)
     full = np.zeros(n, dtype=bool)
@@ -93,7 +103,7 @@ def rejection_sample(actual_shapes, bounding_shape, sample_shape, max_tries=1000
     tries = 0
     while m < n:
         # generate as many points as we still need
-        candidates = bounding_shape.random_points(n - m)
+        candidates = bounding_shape.random_points(n - m, rng=rng)
 
         # check if they are contained in the actual shape
         # TODO this is wrong

@@ -36,17 +36,21 @@ def test_contains():
     box = rg.Box(h)
     assert box.contains(box.vertices).all()
 
-    points = np.random.random((10, 3)) + [0.51, 0, 0]
+    rng = np.random.default_rng(0)
+    points = rng.random((10, 3)) + [0.51, 0, 0]
     res = box.contains(points)
     assert res.shape == (10,)
     assert not res.any()
 
 
 def test_from_points_to_bound():
-    np.random.seed(0)
-    points = np.random.random((100, 3))
+    rng = np.random.default_rng(0)
+    points = rng.random((100, 3))
     box = rg.Box.from_points_to_bound(points)
     assert box.contains(points).all()
+
+    # at least two points must be on the surface (defining opposing vertices)
+    assert np.sum(box.on_surface(points)) >= 2
 
 
 def test_grid():
@@ -77,41 +81,67 @@ def test_rotation():
 
 
 def test_random_points():
+    rng = np.random.default_rng(0)
+
     box = rg.Box.cube(half_extent=0.5)
-    points = box.random_points(10)
+    points = box.random_points(10, rng=rng)
     assert points.shape == (10, 3)
     assert box.contains(points).all()
 
-    point = box.random_points()
+    point = box.random_points(rng=rng)
     assert point.shape == (3,)
     assert box.contains(point)
 
     box = rg.Box(half_extents=[0.5, 1, 2])
-    points = box.random_points(10)
+    points = box.random_points(10, rng=rng)
     assert box.contains(points).all()
 
     # translated from origin
     box = rg.Box(half_extents=[0.5, 1, 2], center=[10, 2, 3])
-    points = box.random_points(10)
+    points = box.random_points(10, rng=rng)
     assert box.contains(points).all()
 
     # translated and rotated
     C = rotz(np.pi / 4)
     box = rg.Box(half_extents=[0.5, 1, 2], center=[10, 2, 5], rotation=C)
-    points = box.random_points(10)
+    points = box.random_points(10, rng=rng)
     assert box.contains(points).all()
 
     # multi-dimensional set of points
-    points = box.random_points((10, 5))
+    points = box.random_points((10, 5), rng=rng)
     assert points.shape == (10, 5, 3)
     assert box.contains(points.reshape((50, 3))).all()
 
 
-def test_random_points_on():
-    # TODO: this needs to be improved
+def test_on_surface():
+    # TODO should this be named boundary?
+    box = rg.Box(half_extents=[1, 2, 3])
+
+    assert box.on_surface([1, 0, 0])
+
+    points = np.array([[1, 0, 0], [-1, 0, 0], [1, 2, 3], [-1, -2, -3]])
+    assert box.on_surface(points).all()
+
+    # not contained in the box
+    assert not box.on_surface([1, 3, 0])
+
+    # inside but not on the boundary
+    assert not box.on_surface([0.9, 0, 0])
+
+    # test with rotation and translation
+    C = rotz(np.pi / 4)
+    r = np.array([4, 4, 4])
+    box = rg.Box(half_extents=[1, 2, 3], center=r, rotation=C)
+
+    points = (C @ points.T).T + r
+    assert box.on_surface(points).all()
+
+
+def test_random_points_on_surface():
+    rng = np.random.default_rng(0)
     box = rg.Box(half_extents=[1, 0.75, 0.5])
-    points = box.random_points_on(10)
-    assert box.contains(points).all()
+    points = box.random_points_on_surface(10, rng=rng)
+    assert box.on_surface(points).all()
 
 
 def test_hollow_density_params():

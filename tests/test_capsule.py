@@ -35,27 +35,27 @@ def test_must_contain():
 
 
 def test_random_points():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     cap = rg.Cylinder(length=2, radius=1).capsule()
 
     # one point
-    point = cap.random_points()
+    point = cap.random_points(rng=rng)
     assert point.shape == (3,)
     assert cap.contains(point)
 
     # multiple points
-    points = cap.random_points(shape=10)
+    points = cap.random_points(shape=10, rng=rng)
     assert points.shape == (10, 3)
     assert cap.contains(points).all()
 
     # grid of points
-    points = cap.random_points(shape=(10, 10))
+    points = cap.random_points(shape=(10, 10), rng=rng)
     assert points.shape == (10, 10, 3)
     assert cap.contains(points.reshape((100, 3))).all()
 
     # grid with one dimension 1
-    points = cap.random_points(shape=(10, 1))
+    points = cap.random_points(shape=(10, 1), rng=rng)
     assert points.shape == (10, 1, 3)
     assert cap.contains(points.reshape((10, 3))).all()
 
@@ -64,6 +64,6 @@ def test_random_points():
     # returning all zeros
     cap = rg.Cylinder(length=2, radius=1, center=[5, 5, 5]).capsule()
     assert not cap.contains([0, 0, 0])
-    points = cap.random_points(shape=10)
+    points = cap.random_points(shape=10, rng=rng)
     assert points.shape == (10, 3)
     assert cap.contains(points).all()

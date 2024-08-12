@@ -5,24 +5,24 @@ import rigeo as rg
 
 
 def test_can_realize():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     N = 100  # number of trials
     n = 10  # number of point masses per trial
 
     # random convex polyhedron
-    points = np.random.random((10, 3)) - 0.5
+    points = rng.random((10, 3)) - 0.5
     poly = rg.ConvexPolyhedron.from_vertices(points, prune=True)
 
     for i in range(N):
-        points = poly.random_points(n)
-        masses = np.random.random(n)
+        points = poly.random_points(n, rng=rng)
+        masses = rng.random(n)
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
         assert poly.can_realize(params, solver=cp.MOSEK)
 
 
 def test_tetrahedron_can_realize():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     N = 1000  # number of trials
     n = 10  # number of point masses per trial
@@ -31,8 +31,8 @@ def test_tetrahedron_can_realize():
 
     # test a bunch of feasible params
     for i in range(N):
-        points = poly.random_points(n)
-        masses = np.random.random(n)
+        points = poly.random_points(n, rng=rng)
+        masses = rng.random(n)
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
         assert poly.can_realize(params, solver=cp.MOSEK)
 

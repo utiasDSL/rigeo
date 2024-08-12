@@ -1,23 +1,20 @@
-"""Compare analytical ellipsoid shell inertia with sampling-based approximation."""
+"""Compare analytical box shell inertia with sampling-based approximation."""
 import numpy as np
 import rigeo as rg
 
 # number of samples
 N = 100000
 
-# semi-axes lengths
-a = 1.0
-b = 0.75
-c = 0.5
+HALF_EXTENTS = [1.0, 0.75, 0.5]
 
 
 def main():
     np.set_printoptions(precision=6, suppress=True)
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
-    # sample points from the ellipsoid
-    box = rg.Box(half_extents=[a, b, c])
-    points = box.random_points_on(shape=N)
+    # uniformly sample points from the faces
+    box = rg.Box(half_extents=HALF_EXTENTS)
+    points = box.random_points_on_surface(shape=N, rng=rng)
 
     # compute corresponding inertia matrix
     H_exp = points.T @ points / N

@@ -82,21 +82,11 @@ class WRL:
     def body(self, params):
         return RigidBody(shapes=self.polys, params=params)
 
-    def random_points(self, shape=1):
+    def random_points(self, shape=1, rng=None):
         """Generate random points contained in the shapes in the scene."""
-        # TODO should use rejection sampling
-        # uniformly randomly choose which shapes to generate points in
         return rejection_sample(
-            actual_shapes=self.polys, bounding_shape=self.aabb(), sample_shape=shape
+            actual_shapes=self.polys, bounding_shape=self.aabb(), sample_shape=shape, rng=rng
         )
-        # prob = np.ones(self.ns) / self.ns  # uniform
-        # num_per_poly = np.random.multinomial(n, prob)
-        #
-        # # generate the random points in each polyhedron
-        # points = []
-        # for num, poly in zip(num_per_poly, self.polys):
-        #     points.append(poly.random_points(num))
-        # return np.vstack(points)
 
 
 # TODO: rename: generate_rigid_body_wrench_trajectory
@@ -109,6 +99,7 @@ def generate_rigid_body_trajectory(
     vel_noise_width=0,
     wrench_noise_bias=0,
     wrench_noise_width=0,
+    rng=None,
 ):
     """Generate a random trajectory for a rigid body.
 
@@ -168,31 +159,17 @@ def generate_rigid_body_trajectory(
     As = np.array([f(t, V) for t, V in zip(t_eval, Vs)])
     ws = np.array([wrench(t) for t in t_eval])
 
-    # TODO is this correct?
-    # if planar:
-    #     # zero out non-planar components and find the wrenches that would
-    #     # achieve that
-    #     Vs[:, 2:5] = 0
-    #     As[:, 2:5] = 0
-    #     ws = np.array([M @ A + rg.skew6(V) @ M @ V for V, A, in zip(Vs, As)])
-
     # apply noise to velocity
-    vel_noise_raw = np.random.random(size=Vs.shape) - 0.5  # mean = 0, width = 1
+    rng = np.random.default_rng(rng)
+    vel_noise_raw = rng.uniform(low=-0.5, high=0.5, size=Vs.shape)  # mean = 0, width = 1
     vel_noise = vel_noise_width * vel_noise_raw + vel_noise_bias
-    # if planar:
-    #     vel_noise[:, 2:5] = 0
     Vs_noisy = Vs + vel_noise
 
     # compute midpoint values
-    # TODO probably makes more sense to add noise to V, then numerically
-    # differentiate to obtain A
     As_noisy = (Vs_noisy[1:, :] - Vs_noisy[:-1, :]) / eval_step
-    # As_noisy = 0.5 * (Vs_noisy[2:, :] - Vs_noisy[:-2, :]) / eval_step
-    # Vs_mid = (Vs_noisy[1:, :] + Vs_noisy[:-1, :]) / 2
 
     # apply noise to wrench
-    # TODO planar
-    w_noise_raw = np.random.random(size=ws.shape) - 0.5
+    w_noise_raw = rng.uniform(low=-0.5, high=0.5, size=ws.shape)
     w_noise = wrench_noise_width * w_noise_raw + wrench_noise_bias
     ws_noisy = ws + w_noise
 
@@ -216,6 +193,7 @@ def generate_rigid_body_trajectory2(
     vel_noise_width=0,
     wrench_noise_bias=None,
     wrench_noise_cov=None,
+    rng=None,
 ):
     """Generate a random trajectory for a rigid body.
 
@@ -274,7 +252,8 @@ def generate_rigid_body_trajectory2(
     ws = np.array([M @ A + skew6(V) @ M @ V for V, A, in zip(Vs, As)])
 
     # apply noise to velocity
-    vel_noise_raw = np.random.random(size=Vs.shape) - 0.5  # mean = 0, width = 1
+    rng = np.random.default_rng(rng)
+    vel_noise_raw = rng.uniform(low=-0.5, high=0.5, size=Vs.shape)  # mean = 0, width = 1
     vel_noise = vel_noise_width * vel_noise_raw + vel_noise_bias
     if planar:
         vel_noise[:, 2:5] = 0
@@ -284,7 +263,7 @@ def generate_rigid_body_trajectory2(
     t_eval2 = t_eval - 0.5 * eval_step
     t_eval2 = np.append(t_eval2, t_eval2[-1] + eval_step)
     V2 = np.array([velocity(t) for t in t_eval2])
-    V2_noise_raw = np.random.random(size=V2.shape) - 0.5
+    V2_noise_raw = rng.uniform(low=-0.5, high=0.5, size=V2.shape)
     V2_noise = vel_noise_width * V2_noise_raw + vel_noise_bias
     if planar:
         V2_noise[:, 2:5] = 0
@@ -299,7 +278,7 @@ def generate_rigid_body_trajectory2(
     assert wrench_noise_bias.shape == (6,)
     assert wrench_noise_cov.shape == (6, 6)
 
-    wrench_noise = np.random.multivariate_normal(
+    wrench_noise = rng.multivariate_normal(
         mean=wrench_noise_bias, cov=wrench_noise_cov, size=ws.shape[0]
     )
     ws_noisy = ws + wrench_noise

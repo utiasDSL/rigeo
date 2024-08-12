@@ -9,8 +9,9 @@ def sample_volume():
     """Uniformly sample points from inside an ellipsoid."""
     N = 10000
 
+    rng = np.random.default_rng(0)
     ell = rg.Ellipsoid(half_extents=[1, 0.5])
-    points = ell.random_points(shape=N)
+    points = ell.random_points(shape=N, rng=rng)
 
     plt.figure()
     plt.scatter(points[:, 0], points[:, 1], s=1, alpha=0.5)
@@ -26,8 +27,9 @@ def sample_surface():
     """Uniformly sample points from the surface of an ellipsoid."""
     N = 1000
 
+    rng = np.random.default_rng(0)
     ell = rg.Ellipsoid(half_extents=[1, 0.5])
-    points = ell.random_points_on(shape=N)
+    points = ell.random_points_on_surface(shape=N, rng=rng)
 
     plt.figure()
     plt.scatter(points[:, 0], points[:, 1], s=1, alpha=0.5)

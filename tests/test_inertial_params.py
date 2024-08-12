@@ -45,11 +45,11 @@ def test_representations():
 
 
 def test_pim_sum_vec_matrices():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
     As = rg.pim_sum_vec_matrices()
 
     for _ in range(10):
-        params = rg.InertialParameters.random()
+        params = rg.InertialParameters.random(rng=rng)
         J = sum([A * p for A, p in zip(As, params.vec)])
         assert np.allclose(J, params.J)
 

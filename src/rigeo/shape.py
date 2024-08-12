@@ -251,7 +251,7 @@ class Shape(abc.ABC):
         pass
 
     @abc.abstractmethod
-    def random_points(self, shape=1):
+    def random_points(self, shape=1, rng=None):
         """Generate random points contained in the shape.
 
         Parameters
@@ -443,12 +443,12 @@ class ConvexPolyhedron(Shape):
             other, tol=tol
         ) and other.contains_polyhedron(self, tol=tol)
 
-    def random_points(self, shape=1):
+    def random_points(self, shape=1, rng=None):
         # NOTE: this is not uniform sampling!
         if np.isscalar(shape):
             shape = (shape,)
         full_shape = tuple(shape) + (self.nv,)
-        w = random_weight_vectors(full_shape)
+        w = random_weight_vectors(full_shape, rng=rng)
         points = w @ self.vertices
         if shape == (1,):
             return np.squeeze(points)
@@ -726,26 +726,30 @@ class Box(ConvexPolyhedron):
         """Length of the box's diagonal."""
         return 2 * np.linalg.norm(self.half_extents)
 
-    def random_points(self, shape=1):
-        """These random points are *uniformly distributed* within the box."""
+    def random_points(self, shape=1, rng=None):
+        """Uniformly sample points contained in the box."""
         if np.isscalar(shape):
             shape = (shape,)
         n = np.prod(shape)
 
-        points = 2 * (np.random.random((n, 3)) - 0.5) * self.half_extents
+        rng = np.random.default_rng(rng)
+        points = rng.uniform(low=-1, high=1, size=(n, 3)) * self.half_extents
         points = (self.rotation @ points.T).T + self.center
         if shape == (1,):
             return np.squeeze(points)
         return points.reshape(shape + (3,))
 
-    def random_points_on(self, shape=1):
+    def random_points_on_surface(self, shape=1, rng=None):
         """Uniformly sample points on the surface of the box."""
         if np.isscalar(shape):
             shape = (shape,)
         n = np.prod(shape)
 
         # generate some random points inside the box
-        points = self.random_points(n)
+        # TODO would probably be nicer to sample the number per face first,
+        # like in the edges function below
+        rng = np.random.default_rng(rng)
+        points = self.random_points(n, rng=rng)
 
         x, y, z = self.half_extents
         Ax = 4 * y * z
@@ -756,7 +760,7 @@ class Box(ConvexPolyhedron):
 
         # randomly project each point on one of the sides proportional to its
         # area
-        counts = np.random.multinomial(n=n, pvals=pvals)
+        counts = rng.multinomial(n=n, pvals=pvals)
         idx = np.cumsum(counts)
         points[0 : idx[0], 0] = x
         points[idx[0] : idx[1], 0] = -x
@@ -766,12 +770,69 @@ class Box(ConvexPolyhedron):
         points[idx[4] :, 2] = -z
 
         # shuffle to regain randomness w.r.t. the sides
-        np.random.shuffle(points)
+        rng.shuffle(points)
 
         points = (self.rotation @ points.T).T + self.center
         if shape == (1,):
             return np.squeeze(points)
         return points.reshape(shape + (3,))
+
+    def random_points_on_edges(self, shape=1, rng=None):
+        """Uniformly sample points on the edges of the box."""
+        if np.isscalar(shape):
+            shape = (shape,)
+        n = np.prod(shape)
+
+        rng = np.random.default_rng(rng)
+
+        # draw samples from each edge proportional to its length
+        x, y, z = self.half_extents
+        L = 4 * (x + y + z)
+        pvals = np.array([x, x, x, x, y, y, y, y, z, z, z, z]) / L
+        counts = np.concatenate(([0], rng.multinomial(n=n, pvals=pvals)))
+        idx = np.cumsum(counts)
+
+        # randomly sample on each edge
+        points = np.zeros((n, 3))
+
+        # edges along x-direction
+        points[: idx[4], 0] = x * rng.uniform(low=-1, high=1, size=idx[4])
+        for i, yz in enumerate([[y, z], [y, -z], [-y, -z], [-y, z]]):
+            points[idx[i] : idx[i + 1], 1:] = yz
+
+        # edges along y-direction
+        points[idx[4] : idx[8], 1] = y * rng.uniform(
+            low=-1, high=1, size=idx[8] - idx[4]
+        )
+        for i, xz in enumerate([[x, z], [x, -z], [-x, -z], [-x, z]]):
+            points[idx[4 + i] : idx[4 + i + 1], [0, 2]] = xz
+
+        # edges along z-direction
+        points[idx[8] :, 2] = z * rng.uniform(
+            low=-1, high=1, size=idx[12] - idx[8]
+        )
+        for i, xy in enumerate([[x, y], [x, -y], [-x, -y], [-x, y]]):
+            points[idx[8 + i] : idx[8 + i + 1], :2] = xy
+
+        rng.shuffle(points)
+
+        points = (self.rotation @ points.T).T + self.center
+        if shape == (1,):
+            return np.squeeze(points)
+        return points.reshape(shape + (3,))
+
+    def on_surface(self, points, tol=1e-8):
+        points = np.atleast_2d(points)
+        contained = self.contains(points, tol=tol)
+
+        # for each point, check if at least one coordinate is on a face
+        # TODO use tol
+        x, y, z = self.half_extents
+        points = (points - self.center) @ self.rotation
+        x_mask = np.isclose(np.abs(points[:, 0]), x)
+        y_mask = np.isclose(np.abs(points[:, 1]), y)
+        z_mask = np.isclose(np.abs(points[:, 2]), z)
+        return contained & (x_mask | y_mask | z_mask)
 
     def grid(self, n):
         """Generate a set of points evenly spaced in the box.
@@ -910,6 +971,19 @@ class Box(ConvexPolyhedron):
         Hxx = x**2 * (x * y + x * z + 3 * y * z) / d
         Hyy = y**2 * (x * y + 3 * x * z + y * z) / d
         Hzz = z**2 * (3 * x * y + x * z + y * z) / d
+        H = np.diag([Hxx, Hyy, Hzz])
+        return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
+            rotation=self.rotation, translation=self.center
+        )
+
+    def wireframe_density_params(self, mass):
+        assert mass >= 0, "Mass must be non-negative."
+
+        x, y, z = self.half_extents
+        d = x + y + z
+        Hxx = x**2 * (x / 3 + y + z) / d
+        Hyy = y**2 * (x + y / 3 + z) / d
+        Hzz = z**2 * (x + y + z / 3) / d
         H = np.diag([Hxx, Hyy, Hzz])
         return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
             rotation=self.rotation, translation=self.center
@@ -1249,18 +1323,18 @@ class Ellipsoid(Shape):
         v_min = self.center - np.sqrt(np.diag(self.E))
         return Box.from_two_vertices(v_min, v_max)
 
-    def random_points(self, shape=1):
+    def random_points(self, shape=1, rng=None):
         """Uniformly sample points inside the ellipsoid.
 
         See https://arxiv.org/abs/1404.1347
         """
         # uniformly sample points in the unit ball then affinely transform them
         # into the ellipsoid
-        X = random_points_in_ball(shape=shape, dim=self.dim)
+        X = random_points_in_ball(shape=shape, dim=self.dim, rng=rng)
         Ainv = self.rotation @ np.diag(self.half_extents) @ self.rotation.T
         return X @ Ainv + self.center
 
-    def random_points_on(self, shape=1):
+    def random_points_on_surface(self, shape=1, rng=None):
         """Uniformly sample points on the surface of the ellipsoid.
 
         Only non-degenerate ellipsoids are supported.
@@ -1270,6 +1344,8 @@ class Ellipsoid(Shape):
         if np.isscalar(shape):
             shape = (shape,)
         n = np.prod(shape)  # total number of points to produce
+
+        rng = np.random.default_rng(rng)
 
         assert np.all(
             self.half_extents > 0
@@ -1284,7 +1360,9 @@ class Ellipsoid(Shape):
             # sample as many points as we still need
             rem = n - count
             p = np.atleast_2d(
-                random_points_on_hypersphere(shape=rem, dim=self.dim - 1)
+                random_points_on_hypersphere(
+                    shape=rem, dim=self.dim - 1, rng=rng
+                )
             )
 
             # scale to match the ellipsoid's axes
@@ -1292,7 +1370,7 @@ class Ellipsoid(Shape):
 
             # reject some points so that the overall sampling is uniform
             g = m * np.sqrt(np.sum(r**2 * d, axis=1))
-            u = np.random.random(rem)
+            u = rng.random(rem)
             accept = u <= g
             n_acc = np.sum(accept)
             points[count : count + n_acc] = r[accept, :]
@@ -1586,9 +1664,10 @@ class Cylinder(Shape):
     def mbe(self, rcond=None, sphere=False, solver=None):
         return self.mib().mbe(rcond=rcond, sphere=sphere, solver=solver)
 
-    def random_points(self, shape=1):
-        P_z = self.length * (np.random.random(shape) - 0.5)
-        P_xy = self.radius * random_points_in_ball(shape=shape, dim=2)
+    def random_points(self, shape=1, rng=None):
+        rng = np.random.default_rng(rng)
+        P_z = self.length * rng.uniform(low=-0.5, high=0.5, size=shape)
+        P_xy = self.radius * random_points_in_ball(shape=shape, dim=2, rng=rng)
         if shape != 1:
             P_z = np.expand_dims(P_z, axis=-1)
         P = np.concatenate((P_xy, P_z), axis=-1)
@@ -1728,23 +1807,8 @@ class Capsule(Shape):
         problem.solve(**kwargs)
         return problem.status == "optimal"
 
-        # Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
-        #
-        # objective = cp.Minimize([0])  # feasibility problem
-        # constraints = [params.J == cp.sum(Js)] + [
-        #     c for J, shape in zip(Js, self._shapes) for c in shape.must_realize(J)
-        # ]
-        # problem = cp.Problem(objective, constraints)
-        # problem.solver(**kwargs)
-        # return problem.status == "optimal"
-
     def must_realize(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-        # Js = [cp.Variable((4, 4), PSD=True) for _ in range(3)]
-        #
-        # return psd_constraints + [
-        #     c for J, shape in zip(Js, self._shapes) for c in shape.must_realize(J)
-        # ]
 
         Js = [cp.Variable((4, 4), PSD=True) for _ in self.caps]
         J_sum = cp.Variable((4, 4), PSD=True)
@@ -1779,46 +1843,15 @@ class Capsule(Shape):
             center=self.center,
         )
 
-    def random_points(self, shape=1):
-        # if np.isscalar(shape):
-        #     shape = (shape,)
-        # shape = tuple(shape)
-
+    def random_points(self, shape=1, rng=None):
         # use rejection sampling within the bounding box
         mbb = self.mbb()
         return rejection_sample(
-            actual_shapes=[self], bounding_shape=self.mbb(), sample_shape=shape
+            actual_shapes=[self],
+            bounding_shape=self.mbb(),
+            sample_shape=shape,
+            rng=rng,
         )
-
-        # n = np.product(shape)
-        #
-        # # TODO this loop could last a long time in degenerate cases
-        # full = np.zeros(n, dtype=bool)
-        # points = np.zeros((n, 3))
-        # m = n
-        # while m > 0:
-        #     # generate as many points as we still need
-        #     candidates = mbb.random_points(m)
-        #
-        #     # check if they are contained in the actual shape
-        #     c = self.contains(candidates)
-        #
-        #     # short-circuit if no points are contained
-        #     if not c.any():
-        #         continue
-        #
-        #     # use the points that are contained, storing them and marking them
-        #     # full
-        #     points[~full][c] = candidates[c]
-        #     full[~full] = c
-        #
-        #     # update count of remaining points to generate
-        #     m = n - np.sum(full)
-        #
-        # # back to original shape
-        # if shape == (1,):
-        #     return np.squeeze(points)
-        # return points.reshape(shape + (3,))
 
 
 def _mbee_con_mat(S, d, Ai, bi, ti):

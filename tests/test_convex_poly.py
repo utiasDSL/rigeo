@@ -23,8 +23,8 @@ def test_contains():
     assert np.all(poly.contains(vertices))
 
     # generate some random points that are contained in the polyhedron
-    np.random.seed(0)
-    points = poly.random_points(10)
+    rng = np.random.default_rng(0)
+    points = poly.random_points(10, rng=rng)
     assert np.all(poly.contains(points))
 
     # points outside the polyhedron
@@ -89,10 +89,10 @@ def test_unbounded():
 
 
 def test_grid():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     # random polyhedron
-    vertices = np.random.random((10, 3))
+    vertices = rng.random((10, 3))
     poly = rg.ConvexPolyhedron.from_vertices(vertices, prune=True)
     grid = poly.grid(10)
     assert poly.contains(grid).all()
@@ -112,7 +112,7 @@ def test_must_contain():
 
 
 def test_random_points():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     # up-cast box to general poly so specialized random_points method for boxes
     # not used
@@ -120,21 +120,21 @@ def test_random_points():
     box = rg.Box(half_extents=[2, 1, 0.5], center=[1, 0, 1], rotation=C).as_poly()
 
     # one point
-    point = box.random_points()
+    point = box.random_points(rng=rng)
     assert point.shape == (3,)
     assert box.contains(point)
 
     # multiple points
-    points = box.random_points(shape=10)
+    points = box.random_points(shape=10, rng=rng)
     assert points.shape == (10, 3)
     assert box.contains(points).all()
 
     # grid of points
-    points = box.random_points(shape=(10, 10))
+    points = box.random_points(shape=(10, 10), rng=rng)
     assert points.shape == (10, 10, 3)
     assert box.contains(points.reshape((100, 3))).all()
 
     # grid with one dimension 1
-    points = box.random_points(shape=(10, 1))
+    points = box.random_points(shape=(10, 1), rng=rng)
     assert points.shape == (10, 1, 3)
     assert box.contains(points.reshape((10, 3))).all()

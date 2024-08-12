@@ -66,10 +66,10 @@ def test_box_bounding_ellipsoid():
 
 
 def test_bounding_ellipsoid_4d():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     dim = 4
-    points = np.random.random((20, dim))
+    points = rng.random((20, dim))
     ell = rg.mbe_of_points(points)
 
     assert np.all(ell.contains(points))
@@ -129,10 +129,10 @@ def test_inscribed_sphere():
 
 
 def test_inscribed_ellipsoid_4d():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     dim = 4
-    points = np.random.random((20, dim))
+    points = rng.random((20, dim))
     poly = rg.ConvexPolyhedron.from_vertices(points, prune=True)
     ell = poly.mie()
 
@@ -301,34 +301,34 @@ def test_must_contain_degenerate_rotated():
 
 
 def test_random_points():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     ell = rg.Ellipsoid(half_extents=[2, 1, 0.5], center=[1, 0, 1])
 
     # one point
-    point = ell.random_points()
+    point = ell.random_points(rng=rng)
     assert point.shape == (3,)
     assert ell.contains(point)
 
     # multiple points
-    points = ell.random_points(shape=10)
+    points = ell.random_points(shape=10, rng=rng)
     assert points.shape == (10, 3)
     assert ell.contains(points).all()
 
     # grid of points
-    points = ell.random_points(shape=(10, 10))
+    points = ell.random_points(shape=(10, 10), rng=rng)
     assert points.shape == (10, 10, 3)
     assert ell.contains(points.reshape((100, 3))).all()
 
     # grid with one dimension 1
-    points = ell.random_points(shape=(10, 1))
+    points = ell.random_points(shape=(10, 1), rng=rng)
     assert points.shape == (10, 1, 3)
     assert ell.contains(points.reshape((10, 3))).all()
 
     # test that the sampling is uniform by seeing if the number of points that
     # fall in an inscribed box is proportional to its relative volume
     n = 10000
-    points = ell.random_points(shape=n)
+    points = ell.random_points(shape=n, rng=rng)
     mib = ell.mib()
     n_box = np.sum(mib.contains(points))
 
@@ -336,13 +336,13 @@ def test_random_points():
     assert np.isclose(n_box / n, mib.volume / ell.volume, rtol=0, atol=0.01)
 
 
-def test_random_points_on():
-    np.random.seed(0)
+def test_random_points_on_surface():
+    rng = np.random.default_rng(0)
 
     ell = rg.Ellipsoid(half_extents=[2, 1, 0.5], center=[1, 0, 1])
 
     # one point
-    point = ell.random_points_on()
+    point = ell.random_points_on_surface(rng=rng)
     assert point.shape == (3,)
 
     # check the point is actually on the surface
@@ -350,13 +350,13 @@ def test_random_points_on():
     assert np.isclose(x @ ell.S @ x, 1.0)
 
     # multiple points
-    points = ell.random_points_on(shape=10)
+    points = ell.random_points_on_surface(shape=10, rng=rng)
     assert points.shape == (10, 3)
     x = points - ell.center
     assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
 
     # grid of points
-    points = ell.random_points_on(shape=(10, 10))
+    points = ell.random_points_on_surface(shape=(10, 10), rng=rng)
     assert points.shape == (10, 10, 3)
     points = points.reshape((100, 3))
     x = points - ell.center
@@ -364,14 +364,14 @@ def test_random_points_on():
 
     # 2D ellipsoid
     ell = rg.Ellipsoid(half_extents=[2, 1], center=[1, 0])
-    points = ell.random_points_on(shape=10)
+    points = ell.random_points_on_surface(shape=10, rng=rng)
     assert points.shape == (10, 2)
     x = points - ell.center
     assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
 
     # 4D ellipsoid
     ell = rg.Ellipsoid(half_extents=[2, 1, 0.5, 0.5], center=[1, 0, 1, 0])
-    points = ell.random_points_on(shape=10)
+    points = ell.random_points_on_surface(shape=10, rng=rng)
     assert points.shape == (10, 4)
     x = points - ell.center
     assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)

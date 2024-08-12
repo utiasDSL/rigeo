@@ -5,7 +5,7 @@ import rigeo as rg
 
 
 def test_cube_at_origin_can_realize():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     N = 100  # number of trials
     n = 10  # number of point masses per trial
@@ -13,8 +13,8 @@ def test_cube_at_origin_can_realize():
     box = rg.Box(half_extents=[0.5, 0.5, 0.5])
 
     for i in range(N):
-        points = box.random_points(n)
-        masses = np.random.random(n)
+        points = box.random_points(n, rng=rng)
+        masses = rng.random(n)
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
         assert box.can_realize(params)
 
@@ -35,7 +35,7 @@ def test_cube_at_origin_can_realize():
 
 
 def test_box_offset_from_origin_can_realize():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     N = 100  # number of trials
     n = 10  # number of point masses per trial
@@ -43,8 +43,8 @@ def test_box_offset_from_origin_can_realize():
     box = rg.Box(half_extents=[1.0, 0.5, 0.1], center=[1, 1, 0])
 
     for i in range(N):
-        points = box.random_points(n)
-        masses = np.random.random(n)
+        points = box.random_points(n, rng=rng)
+        masses = rng.random(n)
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
         assert box.can_realize(params)
 

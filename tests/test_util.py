@@ -9,28 +9,28 @@ def test_vech():
 
 
 def test_skew3():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     for _ in range(100):
-        a = 2 * np.random.random(3) - 1
-        b = 2 * np.random.random(3) - 1
+        a = rng.uniform(-1, 1, size=3)
+        b = rng.uniform(-1, 1, size=3)
         assert np.allclose(rg.skew3(a) @ b, np.cross(a, b))
 
 
 def test_lift3():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     for _ in range(100):
-        A = 2 * np.random.random((3, 3)) - 1
+        A = rng.uniform(-1, 1, size=(3, 3))
         A = 0.5 * (A + A.T)  # make symmetric
-        x = 2 * np.random.random(3) - 1
+        x = rng.uniform(-1, 1, size=3)
         assert np.allclose(rg.lift3(x) @ rg.vech(A), A @ x)
 
 
 def test_lift6():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     for _ in range(100):
-        P = rg.InertialParameters.random()
-        V = 2 * np.random.random(6) - 1
+        P = rg.InertialParameters.random(rng=rng)
+        V = rng.uniform(-1, 1, size=6)
         assert np.allclose(rg.lift6(V) @ P.vec, P.M @ V)

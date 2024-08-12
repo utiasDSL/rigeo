@@ -5,7 +5,7 @@ import rigeo as rg
 
 
 def test_cylinder_at_origin():
-    np.random.seed(0)
+    rng = np.random.default_rng(0)
 
     N = 100  # number of trials
     n = 10  # number of point masses per trial
@@ -17,7 +17,7 @@ def test_cylinder_at_origin():
         for j in range(10):
             # generate points in bounding box and only take the ones in the
             # cylinder
-            points = bounding_box.random_points(n)
+            points = bounding_box.random_points(n, rng=rng)
             contained = cylinder.contains(points)
             points = points[contained, :]
             if len(points) > 0:
@@ -25,7 +25,7 @@ def test_cylinder_at_origin():
         else:
             raise ValueError("Failed generate points in cylinder.")
 
-        masses = np.random.random(points.shape[0])
+        masses = rng.random(points.shape[0])
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
         assert cylinder.can_realize(params, solver=cp.MOSEK)
 
