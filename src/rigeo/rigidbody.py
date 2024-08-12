@@ -1,5 +1,6 @@
 """Three-dimensional rigid bodies."""
 from collections.abc import Iterable
+from dataclasses import dataclass
 import time
 
 import numpy as np
@@ -8,7 +9,14 @@ import cvxpy as cp
 from .util import clean_transform, skew6, lift6
 from .inertial import InertialParameters
 from .constraint import pim_must_equal_param_var
-from .shape import VerificationStats
+
+
+@dataclass
+class VerificationStats:
+    """Stats of parameter verification optimization."""
+
+    iters: int
+    solve_time: float
 
 
 class RigidBody:
