@@ -17,20 +17,11 @@ def box_shell_inertia():
     nom = a2 * b2 * c2 * S2 - a * b * c * S
     den = a2 * b2 * c2 - a * b * c
     I = (nom / den).limit(δ, 0) / 3
-    print(f"I = {I}")
 
     # compute the second moment matrix too
     H = sympy.trace(I) * sympy.eye(3) / 2 - I
     H.simplify()
-    print(f"H = {H}")
-
-    # confirm that this is the same as the cube when all semi-axes are equal
-    r = sympy.symbols("r")
-    print(I.subs({a: r, b: r, c: r}))
-
-    print(I.subs({a: 1.0, b: 0.75, c: 0.5}))
-
-    return I
+    return H, I
 
 
 def box_shell_inertia_parax():
@@ -57,12 +48,26 @@ def box_shell_inertia_parax():
 
     H = H1 + H2 + H3
     I = sympy.trace(H) * sympy.eye(3) - H
-    return I
+    return H, I
 
 
 # check that the two derivations are equal
-I1 = box_shell_inertia()
-I2 = box_shell_inertia_parax()
+H1, I1 = box_shell_inertia()
+H2, I2 = box_shell_inertia_parax()
 diff = I2 - I1
 diff.simplify()
 assert diff == sympy.zeros(3, 3)
+
+print(f"H =\n{H1}")
+print(f"I =\n{I1}")
+
+# when all half extents equal, this is a cube
+a, b, c = sympy.symbols("a, b, c")
+r = sympy.symbols("r")
+H_cube = H1.subs({a: r, b: r, c: r})
+I_cube = sympy.trace(H_cube) * sympy.eye(3) - H_cube
+
+E = r**2 * sympy.eye(3)
+S = sympy.trace(E) * sympy.eye(3) - E
+assert H_cube == 5 * E / 9
+assert I_cube == 5 * S / 9

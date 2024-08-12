@@ -42,15 +42,18 @@ def box_edge_inertia():
 
     H = Hx + Hy + Hz
     I = sympy.trace(H) * sympy.eye(3) - H
-
-    # print(I.subs({a: 1.0, b: 0.75, c: 0.5}))
+    print(f"H =\n{H}")
+    print(f"I =\n{I}")
 
     # when all half extents equal, this is a cube
     r = sympy.symbols("r")
     H_cube = H.subs({a: r, b: r, c: r})
     I_cube = sympy.trace(H_cube) * sympy.eye(3) - H_cube
 
-    IPython.embed()
+    E = r**2 * sympy.eye(3)
+    S = sympy.trace(E) * sympy.eye(3) - E
+    assert H_cube == 7 * E / 9
+    assert I_cube == 7 * S / 9
 
 
 box_edge_inertia()
