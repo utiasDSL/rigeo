@@ -1,11 +1,5 @@
-"""Polyhedral and ellipsoidal geometry."""
+from .box import Box
 from .capsule import Capsule
 from .cylinder import Cylinder
-from .simplex import Simplex
-from .shapes import (
-    Box,
-    ConvexPolyhedron,
-    Ellipsoid,
-    mbe_of_points,
-    mbe_of_ellipsoids,
-)
+from .ellipsoid import Ellipsoid, mbe_of_points, mbe_of_ellipsoids
+from .poly import ConvexPolyhedron

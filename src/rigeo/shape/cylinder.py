@@ -5,7 +5,8 @@ from ..constraint import pim_must_equal_param_var
 from ..inertial import InertialParameters
 from ..random import random_points_in_ball
 from .base import Shape
-from .shapes import Box, Ellipsoid
+from .box import Box
+from .ellipsoid import Ellipsoid
 
 
 class Cylinder(Shape):
@@ -236,3 +237,9 @@ class Cylinder(Shape):
         return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
             rotation=self.rotation, translation=self.center
         )
+
+    def capsule(self):
+        """Constuct a capsule from this cylinder."""
+        # local import needed to avoid circular import
+        from .capsule import Capsule
+        return Capsule(self)

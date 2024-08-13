@@ -27,7 +27,7 @@ def test_tetrahedron_can_realize():
     N = 1000  # number of trials
     n = 10  # number of point masses per trial
 
-    poly = rg.Simplex(np.ones(3))
+    poly = rg.ConvexPolyhedron.simplex(np.ones(3))
 
     # test a bunch of feasible params
     for i in range(N):
@@ -53,7 +53,7 @@ def test_tetrahedron_can_realize():
 
 
 def test_tetrahedron_must_realize_pim():
-    poly = rg.Simplex(np.ones(3)).transform(translation=[-0.5, 0, 0])
+    poly = rg.ConvexPolyhedron.simplex(np.ones(3)).transform(translation=[-0.5, 0, 0])
 
     J = cp.Variable((4, 4), PSD=True)
     m = J[3, 3]
@@ -71,7 +71,7 @@ def test_tetrahedron_must_realize_pim():
 
 
 def test_tetrahedron_must_realize_vec():
-    poly = rg.Simplex(np.ones(3)).transform(translation=[-0.5, 0, 0])
+    poly = rg.ConvexPolyhedron.simplex(np.ones(3)).transform(translation=[-0.5, 0, 0])
 
     θ = cp.Variable(10)
     m = θ[0]

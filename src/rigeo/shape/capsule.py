@@ -3,7 +3,8 @@ import numpy as np
 
 from ..random import rejection_sample
 from .base import Shape
-from .shapes import Box, Ellipsoid
+from .box import Box
+from .ellipsoid import Ellipsoid
 
 
 class Capsule(Shape):

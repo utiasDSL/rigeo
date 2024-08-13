@@ -5,8 +5,7 @@ import rigeo as rg
 
 
 def test_must_contain():
-    cyl = rg.Cylinder(length=2, radius=1)
-    cap = rg.Capsule(cyl)
+    cap = rg.Cylinder(length=2, radius=1).capsule()
 
     point = cp.Variable(3)
 
@@ -38,8 +37,7 @@ def test_must_contain():
 def test_random_points():
     rng = np.random.default_rng(0)
 
-    cyl = rg.Cylinder(length=2, radius=1)
-    cap = rg.Capsule(cyl)
+    cap = rg.Cylinder(length=2, radius=1).capsule()
 
     # one point
     point = cap.random_points(rng=rng)
@@ -64,8 +62,7 @@ def test_random_points():
     # capsule which does not contain the origin
     # there was a bug where the underlying rejection sampling algorithm was
     # returning all zeros
-    cyl = rg.Cylinder(length=2, radius=1, center=[5, 5, 5])
-    cap = rg.Capsule(cyl)
+    cap = rg.Cylinder(length=2, radius=1, center=[5, 5, 5]).capsule()
     assert not cap.contains([0, 0, 0])
     points = cap.random_points(shape=10, rng=rng)
     assert points.shape == (10, 3)
