@@ -59,12 +59,6 @@ class Ellipsoid(Shape):
     The ellipsoid may be degenerate, which means that one or more of the half
     extents is zero and it has no volume.
     """
-
-    # The ellipsoid may be degenerate in two ways:
-    # 1. If one or more half extents is infinite, then the ellipsoid is unbounded
-    #    along one or more axes.
-    # 2. If one or more half extents is zero, then the ellipsoid actually lives
-    #    in a lower-dimensional subspace.
     def __init__(self, half_extents, rotation=None, center=None):
         if np.isscalar(half_extents):
             half_extents = [half_extents]
@@ -73,7 +67,7 @@ class Ellipsoid(Shape):
         assert np.all(
             self.half_extents >= 0
         ), "Half extents cannot be negative."
-        # assert np.all(np.isfinite(self.half_extents)), "Half extents must be finite."
+        assert np.all(np.isfinite(self.half_extents)), "Half extents must be finite."
 
         self.half_extents_inv = _inv_with_zeros(self.half_extents)
 
@@ -244,9 +238,6 @@ class Ellipsoid(Shape):
         """
         return self.rank < self.dim
 
-    def is_infinite(self):
-        return np.any(np.isinf(self.half_extents))
-
     def is_same(self, other, tol=1e-8):
         """Check if this ellipsoid is the same as another."""
         if not isinstance(other, self.__class__):
@@ -297,13 +288,28 @@ class Ellipsoid(Shape):
         return res
 
     def on_surface(self, points, tol=1e-8):
-        # TODO
+        # if the ellipsoid is degenerate, then any point inside it is
+        # technically on the surface
+        if np.isclose(self.half_extents, 0).any():
+            return self.contains(points, tol=tol)
+
+        points = np.array(points)
+        ndim = points.ndim
+        assert ndim <= 2, f"points must have 1 or 2 dimensions, but has {ndim}."
         points = np.atleast_2d(points)
-        contained = self.contains(points, tol=tol)
+
+        s = self.half_extents_inv ** 2
+
+        # transform back to the origin
+        ps = (points - self.center) @ self.rotation
+
+        res = np.isclose(np.sum((s * ps) * ps, axis=1), 1.0, rtol=0, atol=tol)
+        if ndim == 1:
+            return res[0]
+        return res
 
     def must_contain(self, points, scale=1.0):
-        inf_mask = np.isinf(self.half_extents)
-        E_diag = np.diag(self.half_extents[~inf_mask] ** 2)
+        E_diag = np.diag(self.half_extents ** 2)
 
         if points.ndim == 1:
             points = [points]
@@ -311,7 +317,7 @@ class Ellipsoid(Shape):
         constraints = []
         for point in points:
             p = self.rotation.T @ (point - scale * self.center)
-            c = schur(scale * E_diag, p[~inf_mask], scale) >> 0
+            c = schur(scale * E_diag, p, scale) >> 0
             constraints.append(c)
         return constraints
 

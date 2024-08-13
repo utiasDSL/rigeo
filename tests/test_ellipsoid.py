@@ -31,15 +31,11 @@ def test_ellipsoid_hypersphere():
 
 
 def test_ellipsoid_degenerate_contains():
-    ell_0 = rg.Ellipsoid(half_extents=[1, 1, 0])
-    ell_inf = rg.Ellipsoid(half_extents=[1, 1, np.inf])
+    ell = rg.Ellipsoid(half_extents=[1, 1, 0])
 
-    assert ell_0.contains([0.5, 0.5, 0])
-    assert np.all(ell_0.contains([[0.5, 0.5, 0], [-0.1, 0.5, 0]]))
-    assert not np.any(ell_0.contains([[0.5, 0.5, -0.1], [0.5, 0.5, 0.1]]))
-
-    assert ell_inf.contains([0.5, 0.5, 0])
-    assert np.all(ell_inf.contains([[0.5, 0.5, 0], [0.5, 0.5, 10]]))
+    assert ell.contains([0.5, 0.5, 0])
+    assert np.all(ell.contains([[0.5, 0.5, 0], [-0.1, 0.5, 0]]))
+    assert not np.any(ell.contains([[0.5, 0.5, -0.1], [0.5, 0.5, 0.1]]))
 
 
 def test_box_bounding_ellipsoid():
@@ -228,24 +224,6 @@ def test_must_contain_degenerate():
     problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.0, rtol=0, atol=5e-7)
 
-    # infinite half extent
-    ell = rg.Ellipsoid(half_extents=[0.5, 0.5, np.inf])
-
-    h = cp.Variable(3)
-    m = cp.Variable(1)
-
-    objective = cp.Maximize(h[0])
-    constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
-    problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK)
-    assert np.isclose(objective.value, 0.5)
-
-    objective = cp.Maximize(h[2])
-    constraints = ell.must_contain(h, scale=m) + [m >= 0, m <= 1]
-    problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK)
-    assert problem.status == "unbounded"
-
 
 def test_must_contain_degenerate_rotated():
     # zero half extent
@@ -274,30 +252,6 @@ def test_must_contain_degenerate_rotated():
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.25 * np.sqrt(2))
-
-    # infinite half extent
-    ell = rg.Ellipsoid(half_extents=[0.5, 0.5, np.inf], rotation=C)
-
-    # max y is unaffected
-    objective = cp.Maximize(point[1])
-    constraints = ell.must_contain(point)
-    problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK)
-    assert np.isclose(objective.value, 0.5)
-
-    # max x is infinite
-    objective = cp.Maximize(point[0])
-    constraints = ell.must_contain(point)
-    problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK)
-    assert problem.status == "unbounded"
-
-    # max z is also infinite
-    objective = cp.Maximize(point[2])
-    constraints = ell.must_contain(point)
-    problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK)
-    assert problem.status == "unbounded"
 
 
 def test_random_points():
@@ -344,37 +298,67 @@ def test_random_points_on_surface():
     # one point
     point = ell.random_points_on_surface(rng=rng)
     assert point.shape == (3,)
-
-    # check the point is actually on the surface
-    x = point - ell.center
-    assert np.isclose(x @ ell.S @ x, 1.0)
+    assert ell.on_surface(point)
 
     # multiple points
     points = ell.random_points_on_surface(shape=10, rng=rng)
     assert points.shape == (10, 3)
-    x = points - ell.center
-    assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
+    assert ell.on_surface(points).all()
 
     # grid of points
     points = ell.random_points_on_surface(shape=(10, 10), rng=rng)
     assert points.shape == (10, 10, 3)
     points = points.reshape((100, 3))
-    x = points - ell.center
-    assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
+    assert ell.on_surface(points).all()
 
     # 2D ellipsoid
     ell = rg.Ellipsoid(half_extents=[2, 1], center=[1, 0])
     points = ell.random_points_on_surface(shape=10, rng=rng)
     assert points.shape == (10, 2)
-    x = points - ell.center
-    assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
+    assert ell.on_surface(points).all()
 
     # 4D ellipsoid
     ell = rg.Ellipsoid(half_extents=[2, 1, 0.5, 0.5], center=[1, 0, 1, 0])
     points = ell.random_points_on_surface(shape=10, rng=rng)
     assert points.shape == (10, 4)
-    x = points - ell.center
-    assert np.allclose(np.sum((x @ ell.S) * x, axis=1), 1.0)
+    assert ell.on_surface(points).all()
+
+    # degenerate ellipsoid
+    # TODO: degenerate not supported yet
+    # ell = rg.Ellipsoid(half_extents=[1, 1, 0])
+    # points = ell.random_points_on_surface(shape=10, rng=rng)
+    # assert ell.on_surface(points).all()
+
+
+def test_on_surface():
+    ell = rg.Ellipsoid(half_extents=[1, 2, 3])
+
+    assert ell.on_surface([1, 0, 0])
+
+    points = np.array([[1, 0, 0], [-1, 0, 0], [0, 2, 0], [0, 0, -3]])
+    assert ell.on_surface(points).all()
+
+    # not contained in the ellipsoid
+    assert not ell.on_surface([1, 2, 0])
+
+    # degenerate ellipsoid
+    # now any point inside the ellipsoid is also on the surface
+    rng = np.random.default_rng(0)
+    ell = rg.Ellipsoid(half_extents=[1, 2, 0])
+    points = ell.random_points(1000, rng=rng)
+    assert ell.on_surface(points).all()
+
+    # in contrast, the equivalent lower-dimensional ellipsoid does require the
+    # points on the (lower-dimensional) surface
+    ell = rg.Ellipsoid(half_extents=[1, 2])
+    points = points[:, :2]
+    assert not ell.on_surface(points).all()
+
+    # test with translation
+    ell = rg.Ellipsoid(half_extents=[1, 2, 3], center=[4, 4, 4])
+    points = ell.center + np.array([[1, 0, 0], [-1, 0, 0], [0, 2, 0], [0, 0, -3]])
+    res = ell.on_surface(points)
+    assert ell.on_surface(points).all()
 
 
 def test_grid():
