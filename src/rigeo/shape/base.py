@@ -1,3 +1,4 @@
+"""Abstract base class for geometric shapes."""
 import abc
 
 
