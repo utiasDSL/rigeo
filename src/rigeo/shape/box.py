@@ -207,6 +207,9 @@ class Box(ConvexPolyhedron):
         return points.reshape(shape + (3,))
 
     def on_surface(self, points, tol=1e-8):
+        points = np.array(points)
+        ndim = points.ndim
+        assert ndim <= 2
         points = np.atleast_2d(points)
         contained = self.contains(points, tol=tol)
 
@@ -217,7 +220,11 @@ class Box(ConvexPolyhedron):
         x_mask = np.isclose(np.abs(points[:, 0]), x)
         y_mask = np.isclose(np.abs(points[:, 1]), y)
         z_mask = np.isclose(np.abs(points[:, 2]), z)
-        return contained & (x_mask | y_mask | z_mask)
+
+        res = contained & (x_mask | y_mask | z_mask)
+        if ndim == 1:
+            return res[0]
+        return res
 
     def grid(self, n):
         """Generate a set of points evenly spaced in the box.

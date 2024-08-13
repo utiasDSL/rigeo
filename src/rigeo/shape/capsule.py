@@ -4,7 +4,7 @@ import numpy as np
 from ..random import rejection_sample
 from .base import Shape
 from .box import Box
-from .ellipsoid import Ellipsoid
+from .ellipsoid import Ellipsoid, mbe_of_ellipsoids
 
 
 class Capsule(Shape):
@@ -71,10 +71,9 @@ class Capsule(Shape):
         return constraints
 
     def transform(self, rotation=None, translation=None):
-        new_cylinder = self.cylinder.transform(
+        return self.cylinder.transform(
             rotation=rotation, translation=translation
-        )
-        return Capsule(cylinder=new_cylinder)
+        ).capsule()
 
     def can_realize(self, params, eps=0, **kwargs):
         if not params.consistent(eps=eps):
@@ -126,7 +125,6 @@ class Capsule(Shape):
 
     def random_points(self, shape=1, rng=None):
         # use rejection sampling within the bounding box
-        mbb = self.mbb()
         return rejection_sample(
             actual_shapes=[self],
             bounding_shape=self.mbb(),

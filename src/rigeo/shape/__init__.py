@@ -1,3 +1,4 @@
+"""Geometric shapes."""
 from .box import Box
 from .capsule import Capsule
 from .cylinder import Cylinder

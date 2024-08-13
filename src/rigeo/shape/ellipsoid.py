@@ -271,36 +271,35 @@ class Ellipsoid(Shape):
             boolean array with one value per point.
         """
         points = np.array(points)
-        zero_mask = np.isclose(self.half_extents, 0)
-        S_diag = np.diag(self.half_extents_inv[~zero_mask] ** 2)
+        ndim = points.ndim
+        assert ndim <= 2, f"points must have 1 or 2 dimensions, but has {ndim}."
+        points = np.atleast_2d(points)
 
-        if points.ndim == 1:
-            p = self.rotation.T @ (points - self.center)
+        z = np.isclose(self.half_extents, 0)
+        nz = ~z
+        s = self.half_extents_inv[nz] ** 2
 
-            # value along degenerate dimension must be zero
-            if not np.allclose(p[zero_mask], 0, rtol=0, atol=tol):
-                return False
+        # transform back to the origin
+        ps = (points - self.center) @ self.rotation
+        pz = ps[:, z]
+        pnz = ps[:, nz]
 
-            return p[~zero_mask] @ S_diag @ p[~zero_mask] <= 1 + tol
-        elif points.ndim == 2:
-            ps = (points - self.center) @ self.rotation
+        # degenerate dimensions
+        res_z = np.all(np.isclose(pz, 0, rtol=0, atol=tol), axis=1)
 
-            # degenerate dimensions
-            res1 = np.all(
-                np.isclose(ps[:, zero_mask], 0, rtol=0, atol=tol), axis=1
-            )
+        # nondegenerate dimensions
+        res_nz = np.sum((s * pnz) * pnz, axis=1) <= 1 + tol
 
-            # nondegenerate dimensions
-            res2 = np.array(
-                [p[~zero_mask] @ S_diag @ p[~zero_mask] <= 1 + tol for p in ps]
-            )
+        # combine them
+        res = res_z & res_nz
+        if ndim == 1:
+            return res[0]
+        return res
 
-            # combine them
-            return np.logical_and(res1, res2)
-        else:
-            raise ValueError(
-                f"points must have 1 or 2 dimensions, but has {points.ndim}."
-            )
+    def on_surface(self, points, tol=1e-8):
+        # TODO
+        points = np.atleast_2d(points)
+        contained = self.contains(points, tol=tol)
 
     def must_contain(self, points, scale=1.0):
         inf_mask = np.isinf(self.half_extents)

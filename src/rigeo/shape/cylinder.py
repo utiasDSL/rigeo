@@ -4,6 +4,7 @@ import numpy as np
 from ..constraint import pim_must_equal_param_var
 from ..inertial import InertialParameters
 from ..random import random_points_in_ball
+from ..util import clean_transform
 from .base import Shape
 from .box import Box
 from .ellipsoid import Ellipsoid
