@@ -164,3 +164,6 @@ def test_hollow_density_params():
     p1 = box.hollow_density_params(mass=1.0)
     p2 = ell.hollow_density_params(mass=1.0)
     assert np.allclose(p1.H * 3 / 5, p2.H)
+
+    p3 = box.hollow_density_params(mass=2.0)
+    assert np.allclose(p3.J, 2 * p1.J)

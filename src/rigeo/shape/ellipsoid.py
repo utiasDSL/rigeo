@@ -153,16 +153,16 @@ class Ellipsoid(Shape):
         center = np.linalg.lstsq(A, -b, rcond=rcond)[0]
         return cls.from_shape_matrix(S=S, center=center)
 
-    def lower(self):
-        """Project onto a ``rank``-dimensional subspace."""
-        # TODO this needs to be finished and tested
-        # TODO do I even want this?
-        if rank == dim:
-            return self
-        nz = np.nonzero(self.half_extents)
-        half_extents = self.half_extents[nz]
-        U = self.rotation[:, nz]
-        center = U.T @ self.center
+    # def lower(self):
+    #     """Project onto a ``rank``-dimensional subspace."""
+    #     # TODO this needs to be finished and tested
+    #     # TODO do I even want this?
+    #     if rank == dim:
+    #         return self
+    #     nz = np.nonzero(self.half_extents)
+    #     half_extents = self.half_extents[nz]
+    #     U = self.rotation[:, nz]
+    #     center = U.T @ self.center
 
     @property
     def A(self):
@@ -194,21 +194,24 @@ class Ellipsoid(Shape):
         """
         return _Q_matrix(self.S, self.center)
 
+    # TODO
+    def _z(self):
+        return np.isclose(self.half_extents, 0)
+
     def _Q_degenerate(self):
-        zero_mask = np.isclose(self.half_extents, 0)
+        z = self._z()
+        nz = ~z
 
         # non-zero directions treated normally
         # TODO is this correct?
-        nonzero_axes = (
-            self.half_extents_inv[~zero_mask] * self.rotation[:, ~zero_mask]
-        )
-        nonzero_Q = _Q_matrix(nonzero_axes @ nonzero_axes.T, self.center)
+        nonzero_axes = self.half_extents_inv[nz] * self.rotation[:, nz]
+        Qnz = _Q_matrix(nonzero_axes @ nonzero_axes.T, self.center)
 
         # zero directions must have no spread in the mass distribution
-        zero_axes = self.rotation[:, zero_mask]
-        zero_Q = _Q_matrix(zero_axes @ zero_axes.T, self.center, bound=0)
+        zero_axes = self.rotation[:, z]
+        Qz = _Q_matrix(zero_axes @ zero_axes.T, self.center, bound=0)
 
-        return nonzero_Q, zero_Q
+        return Qnz, Qz
 
     def _QV_degenerate(self):
         zero_mask = np.isclose(self.half_extents, 0)
@@ -353,10 +356,8 @@ class Ellipsoid(Shape):
         # length directions separately
         # NOTE we do not check realizability for lower-dimensional ellipsoids;
         # it is supported in must_realize to facilitate building other shapes
-        nonzero_Q, zero_Q = self._Q_degenerate()
-        return np.trace(nonzero_Q @ params.J) >= 0 and np.isclose(
-            np.trace(zero_Q @ params.J), 0
-        )
+        Qnz, Qz = self._Q_degenerate()
+        return np.trace(Qnz @ params.J) >= 0 and np.isclose(np.trace(Qz @ params.J), 0)
 
     def must_realize(self, param_var, eps=0):
         assert (
@@ -569,7 +570,7 @@ class Ellipsoid(Shape):
         Hxx = x**2 * (x * y + x * z + 3 * y * z) / d
         Hyy = y**2 * (x * y + 3 * x * z + y * z) / d
         Hzz = z**2 * (3 * x * y + x * z + y * z) / d
-        H = np.diag([Hxx, Hyy, Hzz])
+        H = mass * np.diag([Hxx, Hyy, Hzz])
         return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
             rotation=self.rotation, translation=self.center
         )

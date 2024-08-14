@@ -433,3 +433,12 @@ def test_mbe_of_ellipsoids():
 
     assert ell.contains_ellipsoid(ell1)
     assert ell.contains_ellipsoid(ell2)
+
+
+def test_hollow_density_params():
+    ell = rg.Ellipsoid(half_extents=[1, 0.75, 0.5])
+
+    # linear scaling with mass
+    p1 = ell.hollow_density_params(mass=1.0)
+    p2 = ell.hollow_density_params(mass=2.0)
+    assert np.allclose(p2.J, 2 * p1.J)

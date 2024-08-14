@@ -8,6 +8,9 @@ def test_vech():
     assert np.allclose(a, [1, 2, 3, 4, 5, 6])
     assert np.allclose(rg.unvech(a), A)
 
+    # test with k != 0
+    assert np.allclose(rg.vech(A, k=1), [2, 3, 5])
+
     rng = np.random.default_rng(0)
     for i in range(100):
         A = rg.random_psd_matrix(i + 1, rng=rng)

@@ -2,7 +2,7 @@ from pathlib import Path
 import numpy as np
 
 
-def vech(A):
+def vech(A, k=0):
     """Half-vectorize a matrix.
 
     This extracts a flattened (vector) representation of the upper triangular
@@ -12,20 +12,23 @@ def vech(A):
     ----------
     A : np.ndarray, shape (n, n)
         The matrix to half-vectorize.
+    k : int
+        Diagonal offset; e.g., passing ``k=1`` vectorizes the *strictly* upper
+        triangular values.
 
     Returns
     -------
-    : np.ndarray, shape (n * (n + 1) / 2,)
+    : np.ndarray
         The vector of upper triangular values.
     """
     n, m = A.shape
     assert n == m
-    idx = np.triu_indices(n)
+    idx = np.triu_indices(n, k=k)
     return A[idx]
 
 
 def unvech(a):
-    """Invert a half-vectorization to recover the original symmetric matrix.
+    """Recover a symmetric matrix from its half-vectorization.
 
     Parameters
     ----------

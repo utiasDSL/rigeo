@@ -383,7 +383,7 @@ class Box(ConvexPolyhedron):
         Hxx = x**2 * (x * y + x * z + 3 * y * z) / d
         Hyy = y**2 * (x * y + 3 * x * z + y * z) / d
         Hzz = z**2 * (3 * x * y + x * z + y * z) / d
-        H = np.diag([Hxx, Hyy, Hzz])
+        H = mass * np.diag([Hxx, Hyy, Hzz])
         return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
             rotation=self.rotation, translation=self.center
         )
@@ -412,7 +412,7 @@ class Box(ConvexPolyhedron):
         Hxx = x**2 * (x / 3 + y + z) / d
         Hyy = y**2 * (x + y / 3 + z) / d
         Hzz = z**2 * (x + y + z / 3) / d
-        H = np.diag([Hxx, Hyy, Hzz])
+        H = mass * np.diag([Hxx, Hyy, Hzz])
         return InertialParameters(mass=mass, h=np.zeros(3), H=H).transform(
             rotation=self.rotation, translation=self.center
         )
