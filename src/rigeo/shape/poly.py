@@ -159,7 +159,7 @@ class ConvexPolyhedron(Shape):
         points = np.array(points)
         if points.ndim == 1:
             return np.all(self.A @ points <= self.b + tol)
-        return np.array([np.all(self.A @ p <= self.b + tol) for p in points])
+        return np.all(points @ self.A.T <= self.b + tol, axis=1)
 
     def must_contain(self, points, scale=1.0):
         if points.ndim == 1:

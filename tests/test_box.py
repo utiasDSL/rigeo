@@ -54,10 +54,22 @@ def test_from_points_to_bound():
 
 
 def test_grid():
-    box = rg.Box(half_extents=(1, 1, 1))
+    box = rg.Box(half_extents=[1, 1, 1])
     n = 20
     points = box.grid(n)
     assert points.shape == (n**3, 3)
+    assert box.contains(points).all()
+
+    # translated
+    box = rg.Box(half_extents=[1, 1, 1], center=[2, 2, 2])
+    points = box.grid(n)
+    assert box.contains(points).all()
+
+    # different number of points along each dimensions
+    n = [10, 6, 3]
+    box = rg.Box(half_extents=[1, 1, 1])
+    points = box.grid(n)
+    assert points.shape == (np.prod(n), 3)
     assert box.contains(points).all()
 
 
@@ -114,7 +126,6 @@ def test_random_points():
 
 
 def test_on_surface():
-    # TODO should this be named boundary?
     box = rg.Box(half_extents=[1, 2, 3])
 
     assert box.on_surface([1, 0, 0])

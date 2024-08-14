@@ -3,9 +3,16 @@ import rigeo as rg
 
 
 def test_vech():
-    A = np.array([[1, 2, 3], [4, 5, 6], [7, 8, 9]])
+    A = np.array([[1, 2, 3], [2, 4, 5], [3, 5, 6]])
     a = rg.vech(A)
-    assert np.allclose(a, [1, 2, 3, 5, 6, 9])
+    assert np.allclose(a, [1, 2, 3, 4, 5, 6])
+    assert np.allclose(rg.unvech(a), A)
+
+    rng = np.random.default_rng(0)
+    for i in range(100):
+        A = rg.random_psd_matrix(i + 1, rng=rng)
+        a = rg.vech(A)
+        assert np.allclose(rg.unvech(a), A)
 
 
 def test_skew3():

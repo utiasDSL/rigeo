@@ -261,9 +261,9 @@ class Ellipsoid(Shape):
             the ellipsoid, or ``False`` if not. For multiple points, return a
             boolean array with one value per point.
         """
-        points = np.array(points)
+        points = np.array(points, copy=False)
         ndim = points.ndim
-        assert ndim <= 2, f"points must have 1 or 2 dimensions, but has {ndim}."
+        assert ndim <= 2, f"points array must have at most 2 dims, but has {ndim}."
         points = np.atleast_2d(points)
 
         z = np.isclose(self.half_extents, 0)
@@ -288,14 +288,30 @@ class Ellipsoid(Shape):
         return res
 
     def on_surface(self, points, tol=1e-8):
+        """Check if points are on the surface of the ellipsoid.
+
+        Parameters
+        ----------
+        points : iterable
+            Points to check. May be a single point or a list or array of points.
+        tol : float, non-negative
+            Numerical tolerance for qualifying as on the surface of the ellipsoid.
+
+        Returns
+        -------
+        :
+            Given a single point, return ``True`` if the point is on the
+            surface of the ellipsoid, or ``False`` if not. For multiple points,
+            return a boolean array with one value per point.
+        """
         # if the ellipsoid is degenerate, then any point inside it is
         # technically on the surface
         if np.isclose(self.half_extents, 0).any():
             return self.contains(points, tol=tol)
 
-        points = np.array(points)
+        points = np.array(points, copy=False)
         ndim = points.ndim
-        assert ndim <= 2, f"points must have 1 or 2 dimensions, but has {ndim}."
+        assert ndim <= 2, f"points array must have at most 2 dims, but has {ndim}."
         points = np.atleast_2d(points)
 
         s = self.half_extents_inv ** 2

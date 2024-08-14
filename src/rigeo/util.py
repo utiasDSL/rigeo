@@ -24,6 +24,41 @@ def vech(A):
     return A[idx]
 
 
+def unvech(a):
+    """Invert a half-vectorization to recover the original symmetric matrix.
+
+    Parameters
+    ----------
+    a : np.ndarray, shape (m,)
+        The half-vectorization of some square matrix. The size must satisfy m =
+        n * (n + 1) / 2 for some integer n >= 1.
+
+    Returns
+    -------
+    : np.ndarray, shape (n, n)
+        The unvectorized matrix.
+    """
+    a = np.array(a, copy=False)
+    assert a.ndim == 1
+    s = a.shape[0]
+
+    # use quadratic formula to solve for shape
+    r = 0.5 * (np.sqrt(1 + 8 * s) - 1)
+    n = np.rint(r).astype(int)
+    assert np.isclose(r, n), "vector is not the vech of a square matrix."
+
+    # fill in the upper triangle
+    A = np.zeros((n, n))
+    idx = np.triu_indices(n)
+    A[idx] = a
+
+    # fill in the lower triangle
+    idxl = np.tril_indices(n, k=-1)
+    A[idxl] = A.T[idxl]
+
+    return A
+
+
 def skew3(v):
     """Form a skew-symmetric matrix from a 3-vector.
 

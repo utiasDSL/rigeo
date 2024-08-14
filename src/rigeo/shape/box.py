@@ -207,19 +207,35 @@ class Box(ConvexPolyhedron):
         return points.reshape(shape + (3,))
 
     def on_surface(self, points, tol=1e-8):
-        points = np.array(points)
+        """Check if points are on the surface of the box.
+
+        Parameters
+        ----------
+        points : iterable
+            Points to check. May be a single point or a list or array of points.
+        tol : float, non-negative
+            Numerical tolerance for qualifying as on the surface of the box.
+
+        Returns
+        -------
+        :
+            Given a single point, return ``True`` if the point is on the
+            surface of the box, or ``False`` if not. For multiple points,
+            return a boolean array with one value per point.
+        """
+        points = np.array(points, copy=False)
         ndim = points.ndim
-        assert ndim <= 2
+        assert ndim <= 2, f"points array must have at most 2 dims, but has {ndim}."
         points = np.atleast_2d(points)
+
         contained = self.contains(points, tol=tol)
 
         # for each point, check if at least one coordinate is on a face
-        # TODO use tol
         x, y, z = self.half_extents
         points = (points - self.center) @ self.rotation
-        x_mask = np.isclose(np.abs(points[:, 0]), x)
-        y_mask = np.isclose(np.abs(points[:, 1]), y)
-        z_mask = np.isclose(np.abs(points[:, 2]), z)
+        x_mask = np.isclose(np.abs(points[:, 0]), x, rtol=0, atol=tol)
+        y_mask = np.isclose(np.abs(points[:, 1]), y, rtol=0, atol=tol)
+        z_mask = np.isclose(np.abs(points[:, 2]), z, rtol=0, atol=tol)
 
         res = contained & (x_mask | y_mask | z_mask)
         if ndim == 1:
@@ -227,33 +243,33 @@ class Box(ConvexPolyhedron):
         return res
 
     def grid(self, n):
-        """Generate a set of points evenly spaced in the box.
+        """Generate a set of points evenly spaced along each dimension in the box.
 
         Parameters
         ----------
-        n : int
-            The number of points in each of the three dimensions.
+        n : int or Iterable
+            The number of points in each of the three dimensions. If a single
+            int, then the number of points in each dimension is the same.
+            Otherwise, a different value can be specified for each dimension.
 
         Returns
         -------
         :
             An array of points with shape ``(n**3, 3)``.
         """
+        if np.isscalar(n):
+            n = [n, n, n]
+
         L = -self.half_extents
         U = self.half_extents
 
-        x = np.linspace(L[0], U[0], n)
-        y = np.linspace(L[1], U[1], n)
-        z = np.linspace(L[2], U[2], n)
+        x = np.linspace(L[0], U[0], n[0])
+        y = np.linspace(L[1], U[1], n[1])
+        z = np.linspace(L[2], U[2], n[2])
 
-        # TODO this is inefficient
-        points = []
-        for i in range(n):
-            for j in range(n):
-                for k in range(n):
-                    point = self.rotation @ [x[i], y[j], z[k]] + self.center
-                    points.append(point)
-        return np.array(points)
+        X, Y, Z = np.meshgrid(x, y, z)
+        points = np.vstack((X.flatten(), Y.flatten(), Z.flatten())).T
+        return (self.rotation @ points.T).T + self.center
 
     def transform(self, rotation=None, translation=None):
         rotation, translation = clean_transform(
