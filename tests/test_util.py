@@ -44,3 +44,24 @@ def test_lift6():
         P = rg.InertialParameters.random(rng=rng)
         V = rng.uniform(-1, 1, size=6)
         assert np.allclose(rg.lift6(V) @ P.vec, P.M @ V)
+
+
+def test_triangular_numbers():
+    assert not rg.is_triangular_number(0)[0]
+    assert not rg.is_triangular_number(-1)[0]
+
+    n = 1
+    x = n * (n + 1) // 2
+    for i in range(1000):
+        if i == x:
+            # we expect the number to be triangular
+            res, m = rg.is_triangular_number(i)
+            assert res
+            assert n == m
+
+            # increment to the next triangular number
+            n += 1
+            x = n * (n + 1) // 2
+        else:
+            assert not rg.is_triangular_number(i)[0]
+

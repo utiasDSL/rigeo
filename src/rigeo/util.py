@@ -1,4 +1,6 @@
+import numbers
 from pathlib import Path
+
 import numpy as np
 
 
@@ -27,6 +29,31 @@ def vech(A, k=0):
     return A[idx]
 
 
+def is_triangular_number(x):
+    """Check if a number is a triangular number.
+
+    That is, there exists a positive integer ``n`` such that ``x == n * (n + 1) / 2``.
+
+    Parameters
+    ----------
+    x : int or float
+        The number to check
+
+    Returns
+    -------
+    : bool
+        True if the number is a triangular number, False otherwise.
+    """
+    # number must be an integer, but we also accept floats that are actually
+    # integers
+    if not (isinstance(x, numbers.Integral) or x.is_integer()) or x < 1:
+        return False, -1
+
+    # use quadratic formula to solve
+    n = 0.5 * (np.sqrt(1 + 8 * x) - 1)
+    return n.is_integer(), int(n)
+
+
 def unvech(a):
     """Recover a symmetric matrix from its half-vectorization.
 
@@ -45,10 +72,11 @@ def unvech(a):
     assert a.ndim == 1
     s = a.shape[0]
 
-    # use quadratic formula to solve for shape
-    r = 0.5 * (np.sqrt(1 + 8 * s) - 1)
-    n = np.rint(r).astype(int)
-    assert np.isclose(r, n), "vector is not the vech of a square matrix."
+    # r = 0.5 * (np.sqrt(1 + 8 * s) - 1)
+    # n = np.rint(r).astype(int)
+    # assert np.isclose(r, n),
+    triangular, n = is_triangular_number(s)
+    assert triangular, "vector is not the vech of a square matrix."
 
     # fill in the upper triangle
     A = np.zeros((n, n))
