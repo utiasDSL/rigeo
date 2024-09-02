@@ -61,6 +61,10 @@ assert diff == sympy.zeros(3, 3)
 print(f"H =\n{H1}")
 print(f"I =\n{I1}")
 
+print(f"Ixx = {I1[0, 0]}")
+print(f"Iyy = {I1[1, 1]}")
+print(f"Izz = {I1[2, 2]}")
+
 # when all half extents equal, this is a cube
 a, b, c = sympy.symbols("a, b, c")
 r = sympy.symbols("r")
