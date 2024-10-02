@@ -230,6 +230,9 @@ class InertialParameters:
         if translation is None:
             translation = np.zeros(3)
 
+        # this is equivalent to computing T @ J @ T.T, where T is homeogeneous
+        # transformation matrix representing the transform and J is the
+        # pseudo-inertia matrix
         com = rotation @ self.com + translation
         H = rotation @ self.Hc @ rotation.T + self.mass * np.outer(com, com)
         return InertialParameters(mass=self.mass, com=com, H=H)
