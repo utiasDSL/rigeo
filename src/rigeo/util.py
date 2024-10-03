@@ -1,3 +1,5 @@
+"""Miscellaneous utility functions."""
+import itertools
 import numbers
 from pathlib import Path
 
@@ -187,7 +189,7 @@ def validation_rmse(Ys, ws, θ, W=None):
     return root
 
 
-def clean_transform(rotation, translation, dim):
+def clean_transform(rotation, translation, dim=3):
     if rotation is None:
         rotation = np.eye(dim)
     else:
@@ -199,3 +201,28 @@ def clean_transform(rotation, translation, dim):
         translation = np.array(translation)
 
     return rotation, translation
+
+
+def transform_matrix(rotation=None, translation=None, dim=3):
+    """Construct a transformation matrix from a rotation and translation."""
+    rotation, translation = clean_transform(rotation, translation, dim=dim)
+    T = np.eye(dim + 1)
+    T[:dim, :dim] = rotation
+    T[:dim, -1] = translation
+    return T
+
+
+def transform_matrix_inv(rotation=None, translation=None, dim=3):
+    """Construct the inverse transformation matrix from a rotation and
+    translation."""
+    rotation, translation = clean_transform(rotation, translation, dim=dim)
+    return transform_matrix(
+        rotation=rotation.T, translation=-rotation.T @ translation
+    )
+
+
+def box_vertices(half_extents):
+    """Generate the vertices of a multi-dimensional box."""
+    dim = len(half_extents)
+    combos = np.array([c for c in itertools.product([1, -1], repeat=dim)])
+    return combos * half_extents

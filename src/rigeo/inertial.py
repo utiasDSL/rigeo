@@ -94,7 +94,7 @@ class InertialParameters:
     @property
     def Hc(self):
         """H matrix about the CoM."""
-        return self.H - np.outer(self.h, self.h) / self.mass
+        return self.H - self.mass * np.outer(self.com, self.com)
 
     @property
     def Ic(self):

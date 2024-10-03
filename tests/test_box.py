@@ -36,11 +36,17 @@ def test_contains():
     box = rg.Box(h)
     assert box.contains(box.vertices).all()
 
+    # random points
     rng = np.random.default_rng(0)
     points = rng.random((10, 3)) + [0.51, 0, 0]
     res = box.contains(points)
     assert res.shape == (10,)
     assert not res.any()
+
+    # offset the box
+    box = rg.Box(h, center=[1.5, 0, 0])
+    assert box.contains(box.vertices).all()
+    assert box.contains(box.center)
 
 
 def test_from_points_to_bound():

@@ -1,31 +1,37 @@
 import numpy as np
+import cvxpy as cp
 
-from ..polydd import SpanForm
-from ..util import clean_transform
+from ..constraint import pim_must_equal_param_var
+from ..polydd import SpanForm, FaceForm
+from ..util import clean_transform, transform_matrix_inv, box_vertices
 from ..inertial import InertialParameters
 from .poly import ConvexPolyhedron
 
 
-def _box_vertices(half_extents, center, rotation):
+def _box_vertices(half_extents, rotation=None, center=None):
     """Generate the vertices of an oriented box."""
-    x, y, z = half_extents
-    v = np.array(
-        [
-            [x, y, z],
-            [x, y, -z],
-            [x, -y, z],
-            [x, -y, -z],
-            [-x, y, z],
-            [-x, y, -z],
-            [-x, -y, z],
-            [-x, -y, -z],
-        ]
-    )
+    rotation, center = clean_transform(rotation=rotation, translation=center)
+    v = box_vertices(half_extents)
     return (rotation @ v.T).T + center
 
 
+def _box_inequalities(half_extents, rotation=None, center=None):
+    """Inequality form of an oriented box."""
+    rotation, center = clean_transform(rotation=rotation, translation=center)
+
+    x, y, z = half_extents
+    A = np.array(
+        [[1, 0, 0], [-1, 0, 0], [0, 1, 0], [0, -1, 0], [0, 0, 1], [0, 0, -1]]
+    )
+    b = np.array([x, x, y, y, z, z])
+
+    A = A @ rotation.T
+    b = b + A @ center
+    return A, b
+
+
 class Box(ConvexPolyhedron):
-    """A box aligned with the x, y, z axes.
+    """An oriented box/cuboid.
 
     Parameters
     ----------
@@ -46,22 +52,28 @@ class Box(ConvexPolyhedron):
         axis-aligned.
     """
 
+    # TODO change parameter order to match transform
     def __init__(self, half_extents, center=None, rotation=None):
         self.half_extents = np.array(half_extents)
         assert self.half_extents.shape == (3,)
         assert np.all(self.half_extents >= 0)
 
-        if center is None:
-            center = np.zeros(3)
-        self.center = np.array(center)
-
-        if rotation is None:
-            rotation = np.eye(3)
-        self.rotation = np.array(rotation)
+        self.rotation, self.center = clean_transform(
+            rotation=rotation, translation=center
+        )
         assert self.rotation.shape == (3, 3)
+        assert self.center.shape == (3,)
 
-        vertices = _box_vertices(self.half_extents, self.center, self.rotation)
-        super().__init__(span_form=SpanForm(vertices))
+        vertices = _box_vertices(
+            self.half_extents, rotation=self.rotation, center=self.center
+        )
+        A, b = _box_inequalities(
+            self.half_extents, rotation=self.rotation, center=self.center
+        )
+        span_form = SpanForm(vertices=vertices)
+        face_form = FaceForm(A_ineq=A, b_ineq=b)
+
+        super().__init__(span_form=span_form, face_form=face_form)
 
     @classmethod
     def cube(cls, half_extent, center=None, rotation=None):
@@ -225,7 +237,9 @@ class Box(ConvexPolyhedron):
         """
         points = np.array(points, copy=False)
         ndim = points.ndim
-        assert ndim <= 2, f"points array must have at most 2 dims, but has {ndim}."
+        assert (
+            ndim <= 2
+        ), f"points array must have at most 2 dims, but has {ndim}."
         points = np.atleast_2d(points)
 
         contained = self.contains(points, tol=tol)
@@ -273,7 +287,7 @@ class Box(ConvexPolyhedron):
 
     def transform(self, rotation=None, translation=None):
         rotation, translation = clean_transform(
-            rotation=rotation, translation=translation, dim=3
+            rotation=rotation, translation=translation
         )
         new_rotation = rotation @ self.rotation
         new_center = rotation @ self.center + translation
@@ -336,6 +350,63 @@ class Box(ConvexPolyhedron):
         : ConvexPolyhedron
         """
         return ConvexPolyhedron.from_vertices(self.vertices)
+
+    def can_realize(self, params, eps=0, **kwargs):
+        if not params.consistent(eps=eps):
+            return False
+
+        # special case for tetrahedra: this does not require solving an
+        # optimization problem
+        if self.nv == 4:
+            return self._can_realize_tetrahedron(params, tol=0)  # TODO fix tol
+
+        # transform inertial parameters back to the origin
+        params0 = params.transform(
+            rotation=self.rotation.T, translation=-self.rotation.T @ self.center
+        )
+
+        # vertices of the axis-aligned box centered at the origin
+        vs = _box_vertices(self.half_extents)
+        Vs = [np.append(v, 1) for v in vs]
+
+        μs = cp.Variable(8, nonneg=True)
+        Jv = cp.sum([μ * np.outer(V, V) for μ, V in zip(μs, Vs)])
+        mv = Jv[3, 3]
+        Hv = Jv[:3, :3]
+
+        objective = cp.Minimize(0)
+        constraints = [
+            params0.mass == mv,
+            cp.upper_tri(params0.J) == cp.upper_tri(Jv),
+            cp.diag(params0.H) <= cp.diag(Hv),
+        ]
+        problem = cp.Problem(objective, constraints)
+        problem.solve(**kwargs)
+        return problem.status == "optimal"
+
+    def must_realize(self, param_var, eps=0):
+        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
+        T = transform_matrix_inv(rotation=self.rotation, translation=self.center)
+
+        # transform back to the origin
+        J0 = T @ J @ T.T
+        m = J0[3, 3]
+        H = J0[:3, :3]
+
+        # vertices of the axis-aligned box centered at the origin
+        vs = _box_vertices(self.half_extents)
+        Vs = [np.append(v, 1) for v in vs]
+
+        μs = cp.Variable(8, nonneg=True)
+        Jv = cp.sum([μ * np.outer(V, V) for μ, V in zip(μs, Vs)])
+        mv = Jv[3, 3]
+        Hv = Jv[:3, :3]
+
+        return psd_constraints + [
+            m == mv,
+            cp.upper_tri(J0) == cp.upper_tri(Jv),
+            cp.diag(H) <= cp.diag(Hv),
+        ]
 
     def uniform_density_params(self, mass):
         """Generate the inertial parameters corresponding to a uniform mass density.

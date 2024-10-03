@@ -1,5 +1,6 @@
 import numpy as np
 import cvxpy as cp
+from scipy.spatial.transform import Rotation
 
 import rigeo as rg
 
@@ -46,6 +47,27 @@ def test_box_offset_from_origin_can_realize():
         points = box.random_points(n, rng=rng)
         masses = rng.random(n)
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+        assert box.can_realize(params)
+
+
+def test_box_transformed_can_realize():
+    rng = np.random.default_rng(0)
+
+    N = 100  # number of trials
+    n = 10  # number of point masses per trial
+
+    for i in range(N):
+        # random box
+        half_extents = rng.uniform(low=0.5, high=1.5, size=3)
+        center = rng.uniform(low=-2, high=2, size=3)
+        C = Rotation.random(random_state=rng).as_matrix()
+        box = rg.Box(half_extents=half_extents, center=center, rotation=C)
+
+        # random parameters
+        points = box.random_points(n, rng=rng)
+        masses = rng.random(n)
+        params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+
         assert box.can_realize(params)
 
 

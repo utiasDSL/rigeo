@@ -65,3 +65,23 @@ def test_triangular_numbers():
         else:
             assert not rg.is_triangular_number(i)[0]
 
+
+def test_box_vertices():
+    half_extents = [1, 2, 3]
+
+    x, y, z = half_extents
+    v1 = np.array(
+        [
+            [x, y, z],
+            [x, y, -z],
+            [x, -y, z],
+            [x, -y, -z],
+            [-x, y, z],
+            [-x, y, -z],
+            [-x, -y, z],
+            [-x, -y, -z],
+        ]
+    )
+
+    v2 = rg.box_vertices(half_extents)
+    assert np.allclose(v1, v2)

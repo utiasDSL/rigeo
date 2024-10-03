@@ -153,6 +153,17 @@ class SpanForm:
         Fmat = poly.get_inequalities()
         return FaceForm.from_cdd_matrix(Fmat)
 
+    def transform(self, rotation=None, translation=None):
+        if rotation is None:
+            rotation = np.eye(self.dim)
+        if translation is None:
+            translation = np.zeros(self.dim)
+
+        if self.vertices is not None:
+            self.vertices = (rotation @ self.vertices.T).T + translation
+        if self.rays is not None:
+            self.rays = (rotation @ self.rays.T).T + translation
+
 
 class FaceForm:
     """Face form (H-rep) of a convex polyhedron."""
@@ -263,6 +274,15 @@ class FaceForm:
         poly = cdd.Polyhedron(Fmat)
         Smat = poly.get_generators()
         return SpanForm.from_cdd_matrix(Smat)
+
+    def transform(self, rotation=None, translation=None):
+        if rotation is None:
+            rotation = np.eye(self.dim)
+        if translation is None:
+            translation = np.zeros(self.dim)
+
+        self.A = self.A @ rotation.T
+        self.b = self.b + self.A @ translation
 
 
 def convex_hull(points, rcond=None):

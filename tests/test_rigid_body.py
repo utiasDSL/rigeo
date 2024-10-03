@@ -62,7 +62,7 @@ def test_must_realize():
 
     objective = cp.Maximize(h[0])
     problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK)
+    problem.solve(solver=cp.MOSEK, verbose=True)
     assert np.isclose(objective.value, 3.0)
 
     # with different shape types
