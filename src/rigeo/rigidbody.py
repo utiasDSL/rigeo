@@ -6,7 +6,7 @@ import time
 import numpy as np
 import cvxpy as cp
 
-from .util import clean_transform, skew6, lift6
+from .util import clean_transform, lift6
 from .inertial import InertialParameters
 from .constraint import pim_must_equal_param_var
 
@@ -201,9 +201,9 @@ class RigidBody:
 
         Parameters
         ----------
-        V : np.ndarray, shape (6,)
-            Body-frame velocity.
-        A : np.ndarray, shape (6,)
+        V : SV
+            Body-frame spatial velocity.
+        A : SV
             Body-frame spatial acceleration.
 
         Returns
@@ -211,4 +211,4 @@ class RigidBody:
         : np.ndarray, shape (6, 10)
             The regressor matrix.
         """
-        return lift6(A) + skew6(V) @ lift6(V)
+        return lift6(A) - V.adjoint().T @ lift6(V)

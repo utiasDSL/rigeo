@@ -4,7 +4,7 @@ from scipy.integrate import solve_ivp
 import wrlparser
 
 from .shape import Box, ConvexPolyhedron
-from .util import skew6, compute_evaluation_times
+from .util import compute_evaluation_times
 from .random import rejection_sample
 from .rigidbody import RigidBody
 
@@ -85,7 +85,10 @@ class WRL:
     def random_points(self, shape=1, rng=None):
         """Generate random points contained in the shapes in the scene."""
         return rejection_sample(
-            actual_shapes=self.polys, bounding_shape=self.aabb(), sample_shape=shape, rng=rng
+            actual_shapes=self.polys,
+            bounding_shape=self.aabb(),
+            sample_shape=shape,
+            rng=rng,
         )
 
 
@@ -144,7 +147,7 @@ def generate_rigid_body_trajectory(
         """Evaluate acceleration at time t given velocity V."""
         # solve Newton-Euler for acceleration
         w = wrench(t)
-        A = np.linalg.solve(M, w - skew6(V) @ M @ V)
+        A = np.linalg.solve(M, w + V.adjoint().T @ M @ V.vec)
         return A
 
     # integrate the trajectory
@@ -161,7 +164,9 @@ def generate_rigid_body_trajectory(
 
     # apply noise to velocity
     rng = np.random.default_rng(rng)
-    vel_noise_raw = rng.uniform(low=-0.5, high=0.5, size=Vs.shape)  # mean = 0, width = 1
+    vel_noise_raw = rng.uniform(
+        low=-0.5, high=0.5, size=Vs.shape
+    )  # mean = 0, width = 1
     vel_noise = vel_noise_width * vel_noise_raw + vel_noise_bias
     Vs_noisy = Vs + vel_noise
 
@@ -249,11 +254,13 @@ def generate_rigid_body_trajectory2(
     Vs = np.array([velocity(t) for t in t_eval])
     As = np.array([acceleration(t) for t in t_eval])
     M = params.M
-    ws = np.array([M @ A + skew6(V) @ M @ V for V, A, in zip(Vs, As)])
+    ws = np.array([params.body_wrench(V=V, A=A) for V, A, in zip(Vs, As)])
 
     # apply noise to velocity
     rng = np.random.default_rng(rng)
-    vel_noise_raw = rng.uniform(low=-0.5, high=0.5, size=Vs.shape)  # mean = 0, width = 1
+    vel_noise_raw = rng.uniform(
+        low=-0.5, high=0.5, size=Vs.shape
+    )  # mean = 0, width = 1
     vel_noise = vel_noise_width * vel_noise_raw + vel_noise_bias
     if planar:
         vel_noise[:, 2:5] = 0

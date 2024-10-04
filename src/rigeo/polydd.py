@@ -159,10 +159,14 @@ class SpanForm:
         if translation is None:
             translation = np.zeros(self.dim)
 
+        vertices = None
+        rays = None
         if self.vertices is not None:
-            self.vertices = (rotation @ self.vertices.T).T + translation
+            vertices = (rotation @ self.vertices.T).T + translation
         if self.rays is not None:
-            self.rays = (rotation @ self.rays.T).T + translation
+            rays = (rotation @ self.rays.T).T + translation
+
+        return SpanForm(vertices=vertices, rays=rays)
 
 
 class FaceForm:
@@ -281,8 +285,9 @@ class FaceForm:
         if translation is None:
             translation = np.zeros(self.dim)
 
-        self.A = self.A @ rotation.T
-        self.b = self.b + self.A @ translation
+        A = self.A @ rotation.T
+        b = self.b + A @ translation
+        return FaceForm(A_ineq=A, b_ineq=b)
 
 
 def convex_hull(points, rcond=None):

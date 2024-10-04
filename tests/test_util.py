@@ -42,8 +42,8 @@ def test_lift6():
 
     for _ in range(100):
         P = rg.InertialParameters.random(rng=rng)
-        V = rng.uniform(-1, 1, size=6)
-        assert np.allclose(rg.lift6(V) @ P.vec, P.M @ V)
+        V = rg.SV.from_vec(rng.uniform(-1, 1, size=6))
+        assert np.allclose(rg.lift6(V) @ P.vec, P.M @ V.vec)
 
 
 def test_triangular_numbers():

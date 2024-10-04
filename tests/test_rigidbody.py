@@ -62,7 +62,7 @@ def test_must_realize():
 
     objective = cp.Maximize(h[0])
     problem = cp.Problem(objective, constraints)
-    problem.solve(solver=cp.MOSEK, verbose=True)
+    problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 3.0)
 
     # with different shape types
@@ -94,21 +94,28 @@ def test_transform():
 
 
 def _pinocchio_regressor(V, A):
+    Vp = pinocchio.Motion(linear=V.linear, angular=V.angular)
+    Ap = pinocchio.Motion(linear=A.linear, angular=A.angular)
+    Yp = pinocchio.bodyRegressor(velocity=Vp, acceleration=Ap)
+
     # pinocchio orders the inertia matrix parameters with I_xz and I_yy swapped
     # compared to our implementation, so we have to manually correct that
-    Y = pinocchio.bodyRegressor(pinocchio.Motion(V), pinocchio.Motion(A))
-    Y_swapped = Y.copy()
-    Y_swapped[:, 6] = Y[:, 7]
-    Y_swapped[:, 7] = Y[:, 6]
-    return Y_swapped
+    Y = Yp.copy()
+    Y[:, 6] = Yp[:, 7]
+    Y[:, 7] = Yp[:, 6]
+
+    # we also put angular components above linear ones, so we need to swap rows
+    Y_linear = Y[:3]
+    Y_angular = Y[3:]
+    return np.vstack((Y_angular, Y_linear))
 
 
 def test_regressor():
     """Test body regressor implementation."""
     rng = np.random.default_rng(0)
 
-    V = rng.uniform(low=-1, high=1, size=6)
-    A = rng.uniform(low=-1, high=1, size=6)
+    V = rg.SV.from_vec(rng.uniform(low=-1, high=1, size=6))
+    A = rg.SV.from_vec(rng.uniform(low=-1, high=1, size=6))
 
     # compare to pinocchio's implementation
     Y = rg.RigidBody.regressor(V, A)

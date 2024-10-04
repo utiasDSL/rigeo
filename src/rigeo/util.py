@@ -113,15 +113,6 @@ def skew3(v):
     return np.array([[0, -z, y], [z, 0, -x], [-y, x, 0]])
 
 
-def skew6(V):
-    """6D cross product matrix"""
-    assert V.shape == (6,)
-    v, ω = V[:3], V[3:]
-    Sv = skew3(v)
-    Sω = skew3(ω)
-    return np.block([[Sω, np.zeros((3, 3))], [Sv, Sω]])
-
-
 def lift3(x):
     """Lift a 3-vector x such that A @ x = lift3(x) @ vech(A) for symmetric A."""
     assert x.shape == (3,)
@@ -134,19 +125,18 @@ def lift3(x):
     # fmt: on
 
 
-def lift6(x):
+def lift6(V):
     """Lift a twist V such that M @ V = lift6(V) @ θ.
 
     M is the spatial mass matrix and θ is the corresponding inertial parameter
     vector.
     """
-    assert x.shape == (6,)
-    a = x[:3]
-    b = x[3:]
+    a = V.linear
+    b = V.angular
     # fmt: off
     return np.block([
-        [      a[:, None],  skew3(b), np.zeros((3, 6))],
-        [np.zeros((3, 1)), -skew3(a),         lift3(b)]])
+        [np.zeros((3, 1)), -skew3(a),         lift3(b)],
+        [      a[:, None],  skew3(b), np.zeros((3, 6))]])
     # fmt: on
 
 
@@ -194,11 +184,13 @@ def clean_transform(rotation, translation, dim=3):
         rotation = np.eye(dim)
     else:
         rotation = np.array(rotation)
+        assert rotation.shape == (dim, dim)
 
     if translation is None:
         translation = np.zeros(dim)
     else:
         translation = np.array(translation)
+        assert translation.shape == (dim,)
 
     return rotation, translation
 
@@ -222,7 +214,18 @@ def transform_matrix_inv(rotation=None, translation=None, dim=3):
 
 
 def box_vertices(half_extents):
-    """Generate the vertices of a multi-dimensional box."""
+    """Generate the vertices of a multi-dimensional box.
+
+    Parameters
+    ----------
+    half_extents : np.ndarray, shape (dim,)
+        The half extents of the box. The shape indicates the box's dimension.
+
+    Returns
+    -------
+    : np.ndarray, shape (2**dim, dim)
+        The vertices of the box, centered at the origin and aligned with axes.
+    """
     dim = len(half_extents)
     combos = np.array([c for c in itertools.product([1, -1], repeat=dim)])
     return combos * half_extents

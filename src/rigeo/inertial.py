@@ -1,6 +1,6 @@
 import numpy as np
 
-from .util import skew3, skew6, vech
+from .util import skew3, vech
 from .random import random_psd_matrix
 
 
@@ -115,7 +115,7 @@ class InertialParameters:
     def M(self):
         """Spatial mass matrix."""
         S = skew3(self.h)
-        return np.block([[self.mass * np.eye(3), -S], [S, self.I]])
+        return np.block([[self.I, S], [-S, self.mass * np.eye(3)]])
 
     @classmethod
     def from_vec(cls, vec):
@@ -199,7 +199,7 @@ class InertialParameters:
         Returns
         -------
         : bool
-            ``True`` if they are the same, ``False`` otherwise.
+            ``True`` if they are the same, ``False`` otherwise.])
         """
         return np.allclose(self.J, other.J)
 
@@ -250,4 +250,4 @@ class InertialParameters:
     def body_wrench(self, V, A):
         """Compute the body-frame wrench about the reference point."""
         M = self.M
-        return M @ A + skew6(V) @ M @ V
+        return M @ A.vec - V.adjoint().T @ M @ V.vec
