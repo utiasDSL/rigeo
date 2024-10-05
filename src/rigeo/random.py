@@ -89,46 +89,47 @@ def random_points_in_ball(shape=1, dim=3, rng=None):
     return points
 
 
-def rejection_sample(actual_shapes, bounding_shape, sample_shape, max_tries=10000, rng=None):
+def rejection_sample(
+    actual_shapes, bounding_shape, sample_shape, max_tries=10000, rng=None
+):
     if np.isscalar(sample_shape):
         sample_shape = (sample_shape,)
     sample_shape = tuple(sample_shape)
 
     rng = np.random.default_rng(rng)
 
-    n = np.prod(sample_shape)
-    full = np.zeros(n, dtype=bool)
+    n = np.prod(sample_shape)  # number of points required
+    m = 0  # number of points generated so far
     points = np.zeros((n, 3))
-    m = 0
     tries = 0
     while m < n:
+        # eventually error out if this is taking too long
+        if tries >= max_tries:
+            raise ValueError(
+                "Failed to generate enough points by rejection sampling."
+            )
+        tries += 1
+
         # generate as many points as we still need
         candidates = bounding_shape.random_points(n - m, rng=rng)
 
         # check if they are contained in the actual shape
-        # TODO this is wrong
-        # TODO this needs to be tested
-        # c = np.any([s.contains(candidates) for s in actual_shapes])
-        c = np.sum([s.contains(candidates) for s in actual_shapes], axis=0).astype(bool)
+        # any value >= 1 will be cast to True
+        c = np.sum(
+            [s.contains(candidates) for s in actual_shapes], axis=0
+        ).astype(bool)
 
         # short-circuit if no points are contained
         if not c.any():
             continue
 
-        # use the points that are contained, storing them and marking them
-        # full
+        # use the points that are contained in at least one of the shapes
         new_points = candidates[c]
         n_new = new_points.shape[0]
         points[m : m + n_new] = new_points
 
         # update count of remaining points to generate
-        # m = n - np.sum(full)
         m += n_new
-
-        # eventually error out if this is taking too long
-        tries += 1
-        if tries >= max_tries:
-            raise ValueError("Failed to generate enough points by rejection sampling.")
 
     # back to original shape
     if sample_shape == (1,):

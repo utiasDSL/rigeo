@@ -1,4 +1,5 @@
 import numpy as np
+import pytest
 
 import rigeo as rg
 
@@ -102,3 +103,50 @@ def test_random_points_in_ball():
 
     # accuracy can be increased by increasing n
     assert np.isclose(n_box / n, vol_box / vol_ball, rtol=0, atol=0.01)
+
+
+def test_rejection_sample():
+    rng = np.random.default_rng(0)
+
+    # test a single actual shape
+    box_actual = rg.Box.cube(half_extent=0.5)
+    box_bounding = rg.Box.cube(half_extent=1)
+
+    points = rg.rejection_sample(
+        actual_shapes=[box_actual],
+        bounding_shape=box_bounding,
+        sample_shape=100,
+        rng=rng,
+    )
+    assert box_actual.contains(points).all()
+
+    # multiple actual shapes
+    box_actual = rg.Box.cube(half_extent=0.5, center=[2, 0, 0])
+    ell_actual = rg.Ellipsoid.sphere(radius=0.5, center=[2.5, 0, 0])
+    box_bounding = rg.Box.cube(half_extent=1, center=[2, 0, 0])
+
+    # don't include zero to ensure the generated array of points is being
+    # populated properly
+    assert not box_actual.contains([0, 0, 0])
+    assert not ell_actual.contains([0, 0, 0])
+
+    points = rg.rejection_sample(
+        actual_shapes=[box_actual, ell_actual],
+        bounding_shape=box_bounding,
+        sample_shape=100,
+        rng=rng,
+    )
+    assert np.all(box_actual.contains(points) | ell_actual.contains(points))
+
+    # when the actual shapes is not actually contained in the bounding shape,
+    # eventually the algorithm errors out
+    box_actual = rg.Box.cube(half_extent=0.5)
+    box_bounding = rg.Box.cube(half_extent=1, center=[2, 0, 0])
+    with pytest.raises(ValueError):
+        rg.rejection_sample(
+            actual_shapes=[box_actual],
+            bounding_shape=box_bounding,
+            sample_shape=100,
+            rng=rng,
+            max_tries=100,
+        )
