@@ -7,6 +7,7 @@ from ..util import clean_transform
 from ..constraint import schur, pim_must_equal_param_var
 from ..random import random_weight_vectors
 from ..inertial import InertialParameters
+from ..moment import Polynomial, MomentMatrix
 from .base import Shape
 
 
@@ -55,6 +56,10 @@ class ConvexPolyhedron(Shape):
 
         self.span_form = span_form
         self.face_form = face_form
+
+        # for caching the can_realize problem
+        self._can_realize_problem = None
+        self._J_param = None
 
     @classmethod
     def from_vertices(cls, vertices, prune=False):
@@ -258,21 +263,21 @@ class ConvexPolyhedron(Shape):
             return None
         return ConvexPolyhedron(span_form=span_form)
 
-    def _can_realize_tetrahedron(self, params, tol=0):
-        # center of mass must be inside the shape
-        if not self.contains(params.com, tol=tol):
-            return False
+    # def _can_realize_tetrahedron(self, params, tol=0):
+    #     # center of mass must be inside the shape
+    #     if not self.contains(params.com, tol=tol):
+    #         return False
+    #
+    #     c = np.append(params.com, 1)
+    #     V = np.vstack((self.vertices.T, np.ones(4)))
+    #     ms = np.linalg.solve(V, params.mass * c)
+    #
+    #     Vs = np.array([np.outer(v, v) for v in self.vertices])
+    #     H_max = sum([m * V for m, V in zip(ms, Vs)])
+    #
+    #     return np.min(np.linalg.eigvals(H_max - params.H)) >= -tol
 
-        c = np.append(params.com, 1)
-        V = np.vstack((self.vertices.T, np.ones(4)))
-        ms = np.linalg.solve(V, params.mass * c)
-
-        Vs = np.array([np.outer(v, v) for v in self.vertices])
-        H_max = sum([m * V for m, V in zip(ms, Vs)])
-
-        return np.min(np.linalg.eigvals(H_max - params.H)) >= -tol
-
-    def can_realize(self, params, eps=0, **kwargs):
+    def can_realize(self, params, eps=0, use_cache=True, **kwargs):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
@@ -282,18 +287,31 @@ class ConvexPolyhedron(Shape):
 
         # special case for tetrahedra: this does not require solving an
         # optimization problem
-        if self.nv == 4:
-            return self._can_realize_tetrahedron(params, tol=0)  # TODO fix tol
+        # if self.nv == 4:
+        #     return self._can_realize_tetrahedron(params, tol=0)  # TODO fix tol
 
-        J = cp.Variable((4, 4), PSD=True)
+        # setup the problem from scratch if we're not using the cached version
+        # or we're solving for the first time
+        if not use_cache or self._can_realize_problem is None:
+            self._J_param = cp.Parameter((4, 4), PSD=True)
+            objective = cp.Minimize([0])  # feasibility problem
+            constraints = self.must_realize(self._J_param)
+            self._can_realize_problem = cp.Problem(objective, constraints)
 
-        objective = cp.Minimize([0])  # feasibility problem
-        constraints = self.must_realize(J) + [J == params.J]
-        problem = cp.Problem(objective, constraints)
-        problem.solve(**kwargs)
-        return problem.status == "optimal"
+        # actually solve the problem
+        self._J_param.value = params.J
+        self._can_realize_problem.solve(**kwargs)
+        return self._can_realize_problem.status == "optimal"
 
-    def must_realize(self, param_var, eps=0):
+        # TODO it is better to batch the problems
+        # objective = cp.Minimize([0])  # feasibility problem
+        # constraints = self.must_realize(J)  # + [J == params.J]
+        # J.value = params.J
+        # problem = cp.Problem(objective, constraints)
+        # problem.solve(**kwargs)
+        # return problem.status == "optimal"
+
+    def must_realize(self, param_var, eps=0, d=2):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
@@ -302,15 +320,26 @@ class ConvexPolyhedron(Shape):
         h = J[:3, 3]
         H = J[:3, :3]
 
-        Vs = np.array([np.outer(v, v) for v in self.vertices])
-        ms = cp.Variable(self.nv)
+        gs = [Polynomial.affine(a=a, b=b) for a, b in zip(self.A, self.b)]
 
-        return psd_constraints + [
-            ms >= 0,
-            m == cp.sum(ms),
-            h == ms.T @ self.vertices,
-            H << cp.sum([μ * V for μ, V in zip(ms, Vs)]),
-        ]
+        moment = MomentMatrix(n=self.dim, d=d)
+        M = cp.Variable(moment.shape, PSD=True)
+
+        return (
+            moment.moment_constraints(M)
+            + moment.localizing_constraints(M, polys=gs)
+            + [m == M[0, 0], h == M[0, 1:4], H == M[1:4, 1:4]]
+        )
+
+        # Vs = np.array([np.outer(v, v) for v in self.vertices])
+        # ms = cp.Variable(self.nv)
+        #
+        # return psd_constraints + [
+        #     ms >= 0,
+        #     m == cp.sum(ms),
+        #     h == ms.T @ self.vertices,
+        #     H << cp.sum([μ * V for μ, V in zip(ms, Vs)]),
+        # ]
 
     def transform(self, rotation=None, translation=None):
         rotation, translation = clean_transform(
