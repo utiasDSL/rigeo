@@ -26,3 +26,4 @@ from .rigidbody import RigidBody
 from .multibody import MultiBody
 from .util import *
 from .spatial import SV
+from .moment import MomentIndex, Polynomial, MomentMatrix
