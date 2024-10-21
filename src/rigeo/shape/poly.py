@@ -61,6 +61,8 @@ class ConvexPolyhedron(Shape):
         self._can_realize_problem = None
         self._J_param = None
 
+        self._polys = [Polynomial.affine(a=a, b=b) for a, b in zip(self.A, self.b)]
+
     @classmethod
     def from_vertices(cls, vertices, prune=False):
         """Construct the polyhedron from a set of vertices.
@@ -277,7 +279,7 @@ class ConvexPolyhedron(Shape):
     #
     #     return np.min(np.linalg.eigvals(H_max - params.H)) >= -tol
 
-    def can_realize(self, params, eps=0, use_cache=True, **kwargs):
+    def can_realize(self, params, eps=0, d=2, use_cache=True, **kwargs):
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
@@ -292,10 +294,11 @@ class ConvexPolyhedron(Shape):
 
         # setup the problem from scratch if we're not using the cached version
         # or we're solving for the first time
+        # TODO this would need to be redone if eps or d changes
         if not use_cache or self._can_realize_problem is None:
             self._J_param = cp.Parameter((4, 4), PSD=True)
             objective = cp.Minimize([0])  # feasibility problem
-            constraints = self.must_realize(self._J_param)
+            constraints = self.must_realize(self._J_param, eps=eps, d=d)
             self._can_realize_problem = cp.Problem(objective, constraints)
 
         # actually solve the problem
@@ -303,7 +306,6 @@ class ConvexPolyhedron(Shape):
         self._can_realize_problem.solve(**kwargs)
         return self._can_realize_problem.status == "optimal"
 
-        # TODO it is better to batch the problems
         # objective = cp.Minimize([0])  # feasibility problem
         # constraints = self.must_realize(J)  # + [J == params.J]
         # J.value = params.J
@@ -311,7 +313,9 @@ class ConvexPolyhedron(Shape):
         # problem.solve(**kwargs)
         # return problem.status == "optimal"
 
+    # TODO I would like to actually rename this "moment_constraints"
     def must_realize(self, param_var, eps=0, d=2):
+        """Moment-based constraints for density realizability."""
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
@@ -320,26 +324,35 @@ class ConvexPolyhedron(Shape):
         h = J[:3, 3]
         H = J[:3, :3]
 
-        gs = [Polynomial.affine(a=a, b=b) for a, b in zip(self.A, self.b)]
-
         moment = MomentMatrix(n=self.dim, d=d)
         M = cp.Variable(moment.shape, PSD=True)
 
         return (
             moment.moment_constraints(M)
-            + moment.localizing_constraints(M, polys=gs)
+            + moment.localizing_constraints(M, polys=self._polys)
             + [m == M[0, 0], h == M[0, 1:4], H == M[1:4, 1:4]]
         )
 
-        # Vs = np.array([np.outer(v, v) for v in self.vertices])
-        # ms = cp.Variable(self.nv)
-        #
-        # return psd_constraints + [
-        #     ms >= 0,
-        #     m == cp.sum(ms),
-        #     h == ms.T @ self.vertices,
-        #     H << cp.sum([μ * V for μ, V in zip(ms, Vs)]),
-        # ]
+    def must_realize_custom(self, param_var, eps=0):
+        """My custom constraints for density realizability."""
+        assert (
+            self.dim == 3
+        ), "Shape must be 3-dimensional to realize inertial parameters."
+
+        # TODO this could fairly easily be revised to not be limited to 3D
+        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
+        m = J[3, 3]
+        h = J[:3, 3]
+        H = J[:3, :3]
+
+        Vs = np.array([np.outer(v, v) for v in self.vertices])
+        ms = cp.Variable(self.nv, nonneg=True)
+
+        return psd_constraints + [
+            m == cp.sum(ms),
+            h == ms.T @ self.vertices,
+            H << cp.sum([μ * V for μ, V in zip(ms, Vs)]),
+        ]
 
     def transform(self, rotation=None, translation=None):
         rotation, translation = clean_transform(
