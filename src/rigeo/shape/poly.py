@@ -57,10 +57,6 @@ class ConvexPolyhedron(Shape):
         self.span_form = span_form
         self.face_form = face_form
 
-        # for caching the can_realize problem
-        self._can_realize_problem = None
-        self._J_param = None
-
         self._polys = [Polynomial.affine(a=a, b=b) for a, b in zip(self.A, self.b)]
 
     @classmethod
@@ -279,42 +275,12 @@ class ConvexPolyhedron(Shape):
     #
     #     return np.min(np.linalg.eigvals(H_max - params.H)) >= -tol
 
-    def can_realize(self, params, eps=0, d=2, use_cache=True, **kwargs):
-        assert (
-            self.dim == 3
-        ), "Shape must be 3-dimensional to realize inertial parameters."
-        # assert tol >= 0, "Numerical tolerance cannot be negative."
-        if not params.consistent(eps=eps):
-            return False
+    def moment_sdp_feasibility_problem(self, param_param, eps=0, d=2):
+        objective = cp.Minimize([0])
+        constraints = self.moment_sdp_constraints(param_param, eps=eps, d=d)
+        return cp.Problem(objective, constraints)
 
-        # special case for tetrahedra: this does not require solving an
-        # optimization problem
-        # if self.nv == 4:
-        #     return self._can_realize_tetrahedron(params, tol=0)  # TODO fix tol
-
-        # setup the problem from scratch if we're not using the cached version
-        # or we're solving for the first time
-        # TODO this would need to be redone if eps or d changes
-        if not use_cache or self._can_realize_problem is None:
-            self._J_param = cp.Parameter((4, 4), PSD=True)
-            objective = cp.Minimize([0])  # feasibility problem
-            constraints = self.must_realize(self._J_param, eps=eps, d=d)
-            self._can_realize_problem = cp.Problem(objective, constraints)
-
-        # actually solve the problem
-        self._J_param.value = params.J
-        self._can_realize_problem.solve(**kwargs)
-        return self._can_realize_problem.status == "optimal"
-
-        # objective = cp.Minimize([0])  # feasibility problem
-        # constraints = self.must_realize(J)  # + [J == params.J]
-        # J.value = params.J
-        # problem = cp.Problem(objective, constraints)
-        # problem.solve(**kwargs)
-        # return problem.status == "optimal"
-
-    # TODO I would like to actually rename this "moment_constraints"
-    def must_realize(self, param_var, eps=0, d=2):
+    def moment_sdp_constraints(self, param_var, eps=0, d=2):
         """Moment-based constraints for density realizability."""
         assert (
             self.dim == 3
@@ -333,8 +299,11 @@ class ConvexPolyhedron(Shape):
             + [m == M[0, 0], h == M[0, 1:4], H == M[1:4, 1:4]]
         )
 
-    def must_realize_custom(self, param_var, eps=0):
-        """My custom constraints for density realizability."""
+    def moment_lp_constraints(self, param_var, eps=0, d=2):
+        raise NotImplementedError()
+
+    def moment_vertex_constraints(self, param_var, eps=0):
+        """My custom constraints for density realizability based on combinations of vertices."""
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."

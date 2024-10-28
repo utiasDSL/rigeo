@@ -340,7 +340,23 @@ class Ellipsoid(Shape):
             constraints.append(c)
         return constraints
 
-    def can_realize(self, params, eps=0, **kwargs):
+    def can_realize(self, params, eps=0):
+        """Check if the ellipsoid can realize the inertial parameters.
+
+        Parameters
+        ----------
+        params : InertialParameters
+            The inertial parameters to check.
+        eps : float
+            The parameters will be considered consistent if all of the
+            eigenvalues of the pseudo-inertia matrix are greater than or equal
+            to ``eps``.
+
+        Returns
+        -------
+        : bool
+            ``True`` if the parameters are realizable, ``False`` otherwise.
+        """
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."
@@ -359,7 +375,25 @@ class Ellipsoid(Shape):
         Qnz, Qz = self._Q_degenerate()
         return np.trace(Qnz @ params.J) >= 0 and np.isclose(np.trace(Qz @ params.J), 0)
 
-    def must_realize(self, param_var, eps=0):
+    def moment_constraints(self, param_var, eps=0):
+        """Generate cvxpy constraints for inertial parameters to be realizable
+        on this ellipsoid.
+
+        Parameters
+        ----------
+        param_var : cp.Expression, shape (4, 4) or shape (10,)
+            The cvxpy inertial parameter variable. If shape is ``(4, 4)``, this
+            is interpreted as the pseudo-inertia matrix. If shape is ``(10,)``,
+            this is interpreted as the inertial parameter vector.
+        eps : float
+            Pseudo-inertia matrix ``J`` is constrained such that ``J - eps *
+            np.eye(4)`` is positive semidefinite and J is symmetric.
+
+        Returns
+        -------
+        : list
+            List of cvxpy constraints.
+        """
         assert (
             self.dim == 3
         ), "Shape must be 3-dimensional to realize inertial parameters."

@@ -12,14 +12,14 @@ def test_construction():
     body = rg.RigidBody(shapes=box)
     assert len(body.shapes) == 1
     assert body.params.is_same(rg.InertialParameters.zero())
-    assert body.is_realizable()
+    # assert body.is_realizable()
 
     body = rg.RigidBody(shapes=[box])
     assert len(body.shapes) == 1
 
     ell = rg.Ellipsoid.sphere(radius=1.0)
     body = rg.RigidBody(shapes=ell)
-    assert body.is_realizable()
+    # assert body.is_realizable()
 
 
 def test_add():
@@ -27,29 +27,29 @@ def test_add():
     params = box.uniform_density_params(mass=1.0)
 
     body = rg.RigidBody(shapes=box, params=params)
-    assert body.is_realizable()
+    # assert body.is_realizable()
 
     body2 = body + body
     assert len(body2.shapes) == 2
     assert body2.params.is_same(box.uniform_density_params(mass=2.0))
 
 
-def test_can_realize():
-    box1 = rg.Box(half_extents=np.ones(3))
-    box2 = rg.Box(half_extents=np.ones(3), center=[2, 0, 0])
+# def test_can_realize():
+#     box1 = rg.Box(half_extents=np.ones(3))
+#     box2 = rg.Box(half_extents=np.ones(3), center=[2, 0, 0])
+#
+#     body = rg.RigidBody(shapes=[box1, box2])
+#     assert body.is_realizable()
+#
+#     params1 = box1.uniform_density_params(mass=1.0)
+#     params2 = box2.uniform_density_params(mass=1.0)
+#
+#     assert body.can_realize(params1)
+#     assert body.can_realize(params2)
+#     assert body.can_realize(params1 + params2)
 
-    body = rg.RigidBody(shapes=[box1, box2])
-    assert body.is_realizable()
 
-    params1 = box1.uniform_density_params(mass=1.0)
-    params2 = box2.uniform_density_params(mass=1.0)
-
-    assert body.can_realize(params1)
-    assert body.can_realize(params2)
-    assert body.can_realize(params1 + params2)
-
-
-def test_must_realize():
+def test_moment_sdp_constraints():
     box1 = rg.Box(half_extents=np.ones(3))
     box2 = rg.Box(half_extents=np.ones(3), center=[2, 0, 0])
 
@@ -58,7 +58,7 @@ def test_must_realize():
     J = cp.Variable((4, 4), PSD=True)
     m = J[3, 3]
     h = J[:3, 3]
-    constraints = body.must_realize(J) + [m <= 1]
+    constraints = body.moment_sdp_constraints(J) + [m <= 1]
 
     objective = cp.Maximize(h[0])
     problem = cp.Problem(objective, constraints)
@@ -71,7 +71,7 @@ def test_must_realize():
 
     body = rg.RigidBody(shapes=[box, ell])
 
-    constraints = body.must_realize(J) + [m <= 1]
+    constraints = body.moment_sdp_constraints(J) + [m <= 1]
     objective = cp.Maximize(h[0])
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)

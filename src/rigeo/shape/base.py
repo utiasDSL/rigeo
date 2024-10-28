@@ -60,49 +60,49 @@ class Shape(abc.ABC):
         """
         pass
 
-    @abc.abstractmethod
-    def can_realize(self, params, eps=0, **kwargs):
-        """Check if the shape can realize the inertial parameters.
-
-        Parameters
-        ----------
-        params : InertialParameters
-            The inertial parameters to check.
-        eps : float
-            The parameters will be considered consistent if all of the
-            eigenvalues of the pseudo-inertia matrix are greater than or equal
-            to ``eps``.
-
-        Additional keyword arguments are passed to the solver, if one is needed.
-
-        Returns
-        -------
-        : bool
-            ``True`` if the parameters are realizable, ``False`` otherwise.
-        """
-        pass
-
-    @abc.abstractmethod
-    def must_realize(self, param_var, eps=0):
-        """Generate cvxpy constraints for inertial parameters to be realizable
-        on this shape.
-
-        Parameters
-        ----------
-        param_var : cp.Expression, shape (4, 4) or shape (10,)
-            The cvxpy inertial parameter variable. If shape is ``(4, 4)``, this
-            is interpreted as the pseudo-inertia matrix. If shape is ``(10,)``,
-            this is interpreted as the inertial parameter vector.
-        eps : float
-            Pseudo-inertia matrix ``J`` is constrained such that ``J - eps *
-            np.eye(4)`` is positive semidefinite and J is symmetric.
-
-        Returns
-        -------
-        : list
-            List of cvxpy constraints.
-        """
-        pass
+    # @abc.abstractmethod
+    # def can_realize(self, params, eps=0, **kwargs):
+    #     """Check if the shape can realize the inertial parameters.
+    #
+    #     Parameters
+    #     ----------
+    #     params : InertialParameters
+    #         The inertial parameters to check.
+    #     eps : float
+    #         The parameters will be considered consistent if all of the
+    #         eigenvalues of the pseudo-inertia matrix are greater than or equal
+    #         to ``eps``.
+    #
+    #     Additional keyword arguments are passed to the solver, if one is needed.
+    #
+    #     Returns
+    #     -------
+    #     : bool
+    #         ``True`` if the parameters are realizable, ``False`` otherwise.
+    #     """
+    #     pass
+    #
+    # @abc.abstractmethod
+    # def must_realize(self, param_var, eps=0):
+    #     """Generate cvxpy constraints for inertial parameters to be realizable
+    #     on this shape.
+    #
+    #     Parameters
+    #     ----------
+    #     param_var : cp.Expression, shape (4, 4) or shape (10,)
+    #         The cvxpy inertial parameter variable. If shape is ``(4, 4)``, this
+    #         is interpreted as the pseudo-inertia matrix. If shape is ``(10,)``,
+    #         this is interpreted as the inertial parameter vector.
+    #     eps : float
+    #         Pseudo-inertia matrix ``J`` is constrained such that ``J - eps *
+    #         np.eye(4)`` is positive semidefinite and J is symmetric.
+    #
+    #     Returns
+    #     -------
+    #     : list
+    #         List of cvxpy constraints.
+    #     """
+    #     pass
 
     @abc.abstractmethod
     def aabb(self):

@@ -120,19 +120,10 @@ class Cylinder(Shape):
             for c in E.must_contain(P, scale=scale)
         ]
 
-    def can_realize(self, params, eps=0, **kwargs):
-        if not params.consistent(eps=eps):
-            return False
+    def moment_sdp_constraints(self, param_var, eps=0, d=2):
+        raise NotImplementedError()
 
-        J = cp.Variable((4, 4), PSD=True)
-
-        objective = cp.Minimize([0])  # feasibility problem
-        constraints = self.must_realize(J) + [J == params.J]
-        problem = cp.Problem(objective, constraints)
-        problem.solve(**kwargs)
-        return problem.status == "optimal"
-
-    def must_realize(self, param_var, eps=0):
+    def moment_vertex_constraints(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
 
         Js = [cp.Variable((4, 4), PSD=True) for _ in self.disks]
@@ -149,7 +140,7 @@ class Cylinder(Shape):
             + [
                 c
                 for J, disk in zip(Js, self.disks)
-                for c in disk.must_realize(J, eps=0)
+                for c in disk.moment_constraints(J, eps=0)
             ]
         )
 
@@ -243,4 +234,5 @@ class Cylinder(Shape):
         """Constuct a capsule from this cylinder."""
         # local import needed to avoid circular import
         from .capsule import Capsule
+
         return Capsule(self)

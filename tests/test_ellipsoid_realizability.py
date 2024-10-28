@@ -84,7 +84,7 @@ def test_disk_can_realize_rotated():
     assert not disk.can_realize(params)
 
 
-def test_disk_must_realize():
+def test_disk_moment_constraints():
     disk = rg.Ellipsoid(half_extents=[0, 1, 1])
 
     J = cp.Variable((4, 4), PSD=True)
@@ -93,7 +93,7 @@ def test_disk_must_realize():
     objective = cp.Maximize(J[1, 1])
 
     # need a mass constraint to bound the problem
-    constraints = disk.must_realize(J) + [m <= 1]
+    constraints = disk.moment_constraints(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 1.0)
@@ -107,7 +107,7 @@ def test_disk_must_realize():
     objective = cp.Maximize(J[1, 1])
 
     # need a mass constraint to bound the problem
-    constraints = disk.must_realize(J) + [m <= 1]
+    constraints = disk.moment_constraints(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 1.0)

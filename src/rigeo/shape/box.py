@@ -351,36 +351,8 @@ class Box(ConvexPolyhedron):
         """
         return ConvexPolyhedron.from_vertices(self.vertices)
 
-    def can_realize_box(self, params, eps=0, **kwargs):
-        """My own custom constraints for boxes."""
-        if not params.consistent(eps=eps):
-            return False
+    def moment_box_vertex_constraints(self, param_var, eps=0):
 
-        # transform inertial parameters back to the origin
-        params0 = params.transform(
-            rotation=self.rotation.T, translation=-self.rotation.T @ self.center
-        )
-
-        # vertices of the axis-aligned box centered at the origin
-        vs = _box_vertices(self.half_extents)
-        Vs = [np.append(v, 1) for v in vs]
-
-        μs = cp.Variable(8, nonneg=True)
-        Jv = cp.sum([μ * np.outer(V, V) for μ, V in zip(μs, Vs)])
-        mv = Jv[3, 3]
-        Hv = Jv[:3, :3]
-
-        objective = cp.Minimize(0)
-        constraints = [
-            params0.mass == mv,
-            cp.upper_tri(params0.J) == cp.upper_tri(Jv),
-            cp.diag(params0.H) <= cp.diag(Hv),
-        ]
-        problem = cp.Problem(objective, constraints)
-        problem.solve(**kwargs)
-        return problem.status == "optimal"
-
-    def must_realize_box(self, param_var, eps=0):
         """My own custom constraints for boxes."""
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
         T = transform_matrix_inv(rotation=self.rotation, translation=self.center)
