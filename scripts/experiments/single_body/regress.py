@@ -46,6 +46,7 @@ def result_dict():
         "ellipsoid": dict_of_lists(list_keys, counter_keys),
         "ell_com": dict_of_lists(list_keys, counter_keys),
         "polyhedron": dict_of_lists(list_keys, counter_keys),
+        "discretized": dict_of_lists(list_keys, counter_keys),
     }
 
 
@@ -73,12 +74,13 @@ def main():
     results["use_planar"] = args.planar
     results["use_bounding_box"] = args.bounding_box
     results["num_obj"] = data["num_obj"]
-    results["vel_noise_width"] = data["vel_noise_width"]
+    results["vel_noise_cov_diag"] = data["vel_noise_cov_diag"]
     results["vel_noise_bias"] = data["vel_noise_bias"]
-    results["wrench_noise_cov"] = data["wrench_noise_cov"]
+    results["wrench_noise_cov_diag"] = data["wrench_noise_cov_diag"]
     results["wrench_noise_bias"] = data["wrench_noise_bias"]
 
-    Σ = data["wrench_noise_cov"]
+    wrench_noise_cov_diag = data["wrench_noise_cov_diag"]
+    Σ = np.diag(wrench_noise_cov_diag.vec)
     W = np.linalg.inv(Σ)
 
     for i in tqdm.tqdm(range(data["num_obj"])):
@@ -87,37 +89,38 @@ def main():
 
         if args.bounding_box:
             box = data["bounding_box"]
-            # box = rg.ConvexPolyhedron.from_vertices(vertices).aabb()
             body = rg.RigidBody(box, params)
             body_mbe = rg.RigidBody(box.mbe(), params)
+            grid = box.grid(10)
         else:
             poly = rg.ConvexPolyhedron.from_vertices(vertices)
             body = rg.RigidBody(poly, params)
             body_mbe = rg.RigidBody(poly.mbe(), params)
+            grid = poly.aabb().grid(10)
 
         # ensure bounding ellipsoid is indeed bounding
         assert body_mbe.shapes[0].contains_polyhedron(body.shapes[0])
 
-        idx = np.arange(data["obj_data_full"][i]["Vs"].shape[0])
+        n = len(data["obj_data_full"][i]["Vs"])
+        idx = np.arange(n)
         if SHUFFLE:
             np.random.shuffle(idx)
 
         # ground truth
-        Vs = np.array(data["obj_data_full"][i]["Vs"])[idx, :]
-        As = np.array(data["obj_data_full"][i]["As"])[idx, :]
-        ws = np.array(data["obj_data_full"][i]["ws"])[idx, :]
+        Vs = np.array(data["obj_data_full"][i]["Vs"])[idx]
+        As = np.array(data["obj_data_full"][i]["As"])[idx]
+        ws = np.array(data["obj_data_full"][i]["ws"])[idx]
 
         # noisy data
         if args.planar:
-            Vs_noisy = np.array(data["obj_data_planar"][i]["Vs_noisy"])[idx, :]
-            As_noisy = np.array(data["obj_data_planar"][i]["As_noisy"])[idx, :]
-            ws_noisy = np.array(data["obj_data_planar"][i]["ws_noisy"])[idx, :]
+            Vs_noisy = np.array(data["obj_data_planar"][i]["Vs_noisy"])[idx]
+            As_noisy = np.array(data["obj_data_planar"][i]["As_noisy"])[idx]
+            ws_noisy = np.array(data["obj_data_planar"][i]["ws_noisy"])[idx]
         else:
-            Vs_noisy = np.array(data["obj_data_full"][i]["Vs_noisy"])[idx, :]
-            As_noisy = np.array(data["obj_data_full"][i]["As_noisy"])[idx, :]
-            ws_noisy = np.array(data["obj_data_full"][i]["ws_noisy"])[idx, :]
+            Vs_noisy = np.array(data["obj_data_full"][i]["Vs_noisy"])[idx]
+            As_noisy = np.array(data["obj_data_full"][i]["As_noisy"])[idx]
+            ws_noisy = np.array(data["obj_data_full"][i]["ws_noisy"])[idx]
 
-        n = Vs.shape[0]
         n_train = int(TRAIN_TEST_SPLIT * n)
 
         if TRAIN_WITH_NOISY_MOTION:
@@ -126,7 +129,8 @@ def main():
         else:
             Vs_train = Vs[:n_train]
             As_train = As[:n_train]
-        ws_train = ws_noisy[:n_train]
+        # ws_train = ws_noisy[:n_train]
+        ws_train = np.vstack([w.vec for w in ws_noisy[:n_train]])
 
         Ys_train = np.array(
             [rg.RigidBody.regressor(V, A) for V, A in zip(Vs_train, As_train)]
@@ -138,14 +142,15 @@ def main():
         Ys_test = np.array(
             [rg.RigidBody.regressor(V, A) for V, A in zip(Vs_test, As_test)]
         )
-        ws_test = ws[n_train:]
+        ws_test = np.vstack([w.vec for w in ws[n_train:]])
 
         # solve the problem with no noise (just to make sure things are working)
         Ys_train_noiseless = np.array(
             [rg.RigidBody.regressor(V, A) for V, A in zip(Vs, As)]
         )[:n_train]
-        ws_train_noiseless = ws[:n_train]
+        ws_train_noiseless = np.vstack([w.vec for w in ws[:n_train]])
 
+        # TODO why doesn't this just take a list of shapes?
         prob_noiseless = rg.IdentificationProblem(
             As=Ys_train_noiseless,
             bs=ws_train_noiseless,
@@ -198,10 +203,21 @@ def main():
             warm_start=False,
         ).solve([body_mbe], must_realize=True, com_bounding_shapes=[body.shapes[0]])
 
+        res_disc = rg.DiscretizedIdentificationProblem(
+            As=Ys_train,
+            bs=ws_train,
+            γ=REGULARIZATION_COEFF,
+            ε=PIM_EPS,
+            Σ=Σ,
+            solver=SOLVER,
+            warm_start=False,
+        ).solve(grid, com_bounding_shape=body.shapes[0])
+
         params_nom = res_nom.params[0]
         params_ell = res_ell.params[0]
         params_ell_com = res_ell_com.params[0]
         params_poly = res_poly.params[0]
+        params_disc = res_disc.params[0]
 
         # parameter values
         results["no_noise"]["params"].append(params_noiseless)
@@ -209,6 +225,7 @@ def main():
         results["ellipsoid"]["params"].append(params_ell)
         results["ell_com"]["params"].append(params_ell_com)
         results["polyhedron"]["params"].append(params_poly)
+        results["discretized"]["params"].append(params_disc)
 
         # Riemannian errors
         results["no_noise"]["riemannian_errors"].append(
@@ -225,6 +242,9 @@ def main():
         )
         results["polyhedron"]["riemannian_errors"].append(
             rg.positive_definite_distance(params.J, params_poly.J)
+        )
+        results["discretized"]["riemannian_errors"].append(
+            rg.positive_definite_distance(params.J, params_disc.J)
         )
 
         # validation errors
@@ -243,6 +263,9 @@ def main():
         results["polyhedron"]["validation_errors"].append(
             rg.validation_rmse(Ys_test, ws_test, params_poly.vec, W=None)
         )
+        results["discretized"]["validation_errors"].append(
+            rg.validation_rmse(Ys_test, ws_test, params_disc.vec, W=None)
+        )
 
         # objective values
         results["no_noise"]["objective_values"].append(res_noiseless.objective)
@@ -250,6 +273,7 @@ def main():
         results["ellipsoid"]["objective_values"].append(res_ell.objective)
         results["ell_com"]["objective_values"].append(res_ell_com.objective)
         results["polyhedron"]["objective_values"].append(res_poly.objective)
+        results["discretized"]["objective_values"].append(res_disc.objective)
 
         # number of iterations
         results["no_noise"]["num_iters"].append(res_noiseless.iters)
@@ -257,6 +281,7 @@ def main():
         results["ellipsoid"]["num_iters"].append(res_ell.iters)
         results["ell_com"]["num_iters"].append(res_ell_com.iters)
         results["polyhedron"]["num_iters"].append(res_poly.iters)
+        results["discretized"]["num_iters"].append(res_disc.iters)
 
         # solve times
         results["no_noise"]["solve_times"].append(res_noiseless.solve_time)
@@ -264,30 +289,31 @@ def main():
         results["ellipsoid"]["solve_times"].append(res_ell.solve_time)
         results["ell_com"]["solve_times"].append(res_ell_com.solve_time)
         results["polyhedron"]["solve_times"].append(res_poly.solve_time)
+        results["discretized"]["solve_times"].append(res_disc.solve_time)
 
-        poly = body.shapes[0]
+        # poly = body.shapes[0]
 
-        try:
-            if poly.can_realize(params_nom):
-                results["nominal"]["num_feasible"] += 1
-        except cp.error.SolverError:
-            # take failure to solve as infeasible
-            pass
-
-        try:
-            if poly.can_realize(params_ell):
-                results["ellipsoid"]["num_feasible"] += 1
-        except cp.error.SolverError:
-            pass
-
-        try:
-            if poly.can_realize(params_ell_com):
-                results["ell_com"]["num_feasible"] += 1
-        except cp.error.SolverError:
-            pass
-
-        assert poly.can_realize(params_poly)
-        results["polyhedron"]["num_feasible"] += 1
+        # try:
+        #     if poly.can_realize(params_nom):
+        #         results["nominal"]["num_feasible"] += 1
+        # except cp.error.SolverError:
+        #     # take failure to solve as infeasible
+        #     pass
+        #
+        # try:
+        #     if poly.can_realize(params_ell):
+        #         results["ellipsoid"]["num_feasible"] += 1
+        # except cp.error.SolverError:
+        #     pass
+        #
+        # try:
+        #     if poly.can_realize(params_ell_com):
+        #         results["ell_com"]["num_feasible"] += 1
+        # except cp.error.SolverError:
+        #     pass
+        #
+        # assert poly.can_realize(params_poly)
+        # results["polyhedron"]["num_feasible"] += 1
 
     with open(args.outfile, "wb") as f:
         pickle.dump(results, f)

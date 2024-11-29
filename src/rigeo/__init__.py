@@ -9,13 +9,14 @@ from .constraint import (
 )
 from .experiment import (
     WRL,
+    generate_rigid_body_wrench_trajectory,
     generate_rigid_body_trajectory,
-    generate_rigid_body_trajectory2,
 )
 from .geodesic import positive_definite_distance
 from .shape import *
 from .identify import (
     IdentificationProblem,
+    DiscretizedIdentificationProblem,
     IdentificationResult,
     entropic_regularizer,
     least_squares_objective,
@@ -25,5 +26,5 @@ from .random import *
 from .rigidbody import RigidBody
 from .multibody import MultiBody
 from .util import *
-from .spatial import SV
+from .spatial import SpatialVector, SV
 from .moment import MomentIndex, Polynomial, MomentMatrix

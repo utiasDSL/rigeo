@@ -134,16 +134,16 @@ class RigidBody:
         : list
             List of cvxpy constraints.
         """
+        def moment_constraints(shape, J, eps=0):
+            if isinstance(shape, Ellipsoid):
+                return shape.moment_constraints(J, eps=eps)
+            return shape.moment_sdp_constraints(J, eps=eps, d=d)
+
         if len(self.shapes) == 1:
-            return self.shapes[0].must_realize(param_var, eps=eps)
+            return moment_constraints(self.shapes[0], param_var, eps=eps)
 
         J, psd_constraints = pim_must_equal_param_var(param_var, eps=eps)
         Js = [cp.Variable((4, 4), PSD=True) for _ in self.shapes]
-
-        def moment_constraints(shape, J):
-            if isinstance(shape, Ellipsoid):
-                return shape.moment_constraints(J, eps=0)
-            return shape.moment_sdp_constraints(J, eps=0, d=d)
 
         return (
             [

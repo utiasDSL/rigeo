@@ -352,10 +352,11 @@ class Box(ConvexPolyhedron):
         return ConvexPolyhedron.from_vertices(self.vertices)
 
     def moment_box_vertex_constraints(self, param_var, eps=0):
-
         """My own custom constraints for boxes."""
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-        T = transform_matrix_inv(rotation=self.rotation, translation=self.center)
+        T = transform_matrix_inv(
+            rotation=self.rotation, translation=self.center
+        )
 
         # transform back to the origin
         J0 = T @ J @ T.T

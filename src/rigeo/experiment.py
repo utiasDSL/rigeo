@@ -3,6 +3,7 @@ import numpy as np
 from scipy.integrate import solve_ivp
 import wrlparser
 
+from .spatial import SV
 from .shape import Box, ConvexPolyhedron
 from .util import compute_evaluation_times
 from .random import rejection_sample
@@ -92,8 +93,7 @@ class WRL:
         )
 
 
-# TODO: rename: generate_rigid_body_wrench_trajectory
-def generate_rigid_body_trajectory(
+def generate_rigid_body_wrench_trajectory(
     params,
     duration=2 * np.pi,
     eval_step=0.1,
@@ -189,15 +189,15 @@ def generate_rigid_body_trajectory(
     }
 
 
-def generate_rigid_body_trajectory2(
+def generate_rigid_body_trajectory(
     params,
     duration=2 * np.pi,
     eval_step=0.1,
     planar=False,
-    vel_noise_bias=0,
-    vel_noise_width=0,
+    vel_noise_bias=None,
+    vel_noise_cov_diag=None,
     wrench_noise_bias=None,
-    wrench_noise_cov=None,
+    wrench_noise_cov_diag=None,
     rng=None,
 ):
     """Generate a random trajectory for a rigid body.
@@ -219,76 +219,99 @@ def generate_rigid_body_trajectory2(
 
     def velocity(t):
         """Body-frame spatial velocity of the rigid body."""
-        V = np.array(
+        v = np.array(
+            [np.sin(t), np.sin(t + np.pi / 3), np.sin(t + 2 * np.pi / 3)]
+        )
+        ω = np.array(
             [
-                np.sin(t),
-                np.sin(t + np.pi / 3),
-                np.sin(t + 2 * np.pi / 3),
                 np.sin(t + np.pi),
                 np.sin(t + 4 * np.pi / 3),
                 np.sin(t + 5 * np.pi / 3),
             ]
         )
+
         if planar:
-            V[2:5] = 0
-        return V
+            v[2] = 0
+            ω[:2] = 0
+        return SV(linear=v, angular=ω)
 
     def acceleration(t):
         """Body-frame spatial acceleration of the rigid body."""
-        A = np.array(
+        a = np.array(
+            [np.cos(t), np.cos(t + np.pi / 3), np.cos(t + 2 * np.pi / 3)]
+        )
+        α = np.array(
             [
-                np.cos(t),
-                np.cos(t + np.pi / 3),
-                np.cos(t + 2 * np.pi / 3),
                 np.cos(t + np.pi),
                 np.cos(t + 4 * np.pi / 3),
                 np.cos(t + 5 * np.pi / 3),
             ]
         )
+
         if planar:
-            A[2:5] = 0
-        return A
+            a[2] = 0
+            α[:2] = 0
+        return SV(linear=a, angular=α)
+
+    rng = np.random.default_rng(rng)
+
+    if vel_noise_bias is None:
+        vel_noise_bias = SV.zero()
+    if vel_noise_cov_diag is None:
+        vel_noise_cov_diag = SV.zero()
+
+    if wrench_noise_bias is None:
+        wrench_noise_bias = SV.zero()
+    if wrench_noise_cov_diag is None:
+        wrench_noise_cov_diag = SV.zero()
 
     # compute true trajectory values
-    n, t_eval = compute_evaluation_times(duration=duration, step=eval_step)
-    Vs = np.array([velocity(t) for t in t_eval])
-    As = np.array([acceleration(t) for t in t_eval])
-    M = params.M
-    ws = np.array([params.body_wrench(V=V, A=A) for V, A, in zip(Vs, As)])
+    _, t_eval = compute_evaluation_times(duration=duration, step=eval_step)
+    Vs = [velocity(t) for t in t_eval]
+    As = [acceleration(t) for t in t_eval]
+    ws = [params.body_wrench(V=V, A=A) for V, A, in zip(Vs, As)]
 
     # apply noise to velocity
-    rng = np.random.default_rng(rng)
-    vel_noise_raw = rng.uniform(
-        low=-0.5, high=0.5, size=Vs.shape
-    )  # mean = 0, width = 1
-    vel_noise = vel_noise_width * vel_noise_raw + vel_noise_bias
-    if planar:
-        vel_noise[:, 2:5] = 0
-    Vs_noisy = Vs + vel_noise
+    Vs_noisy = []
+    for V in Vs:
+        # transform with desired width and bias
+        noise = SV.random_diag_normal(
+            mean=vel_noise_bias, cov_diag=vel_noise_cov_diag, rng=rng
+        )
+        if planar:
+            noise.linear[2] = 0
+            noise.angular[:2] = 0
 
-    # sample velocities at the half intervals to compute acceleration via central differences
+        Vs_noisy.append(V + noise)
+
+    # sample velocities at the half intervals to compute acceleration via
+    # central differences
     t_eval2 = t_eval - 0.5 * eval_step
     t_eval2 = np.append(t_eval2, t_eval2[-1] + eval_step)
-    V2 = np.array([velocity(t) for t in t_eval2])
-    V2_noise_raw = rng.uniform(low=-0.5, high=0.5, size=V2.shape)
-    V2_noise = vel_noise_width * V2_noise_raw + vel_noise_bias
-    if planar:
-        V2_noise[:, 2:5] = 0
-    V2_noisy = V2 + V2_noise
-    As_noisy = (V2_noisy[1:, :] - V2_noisy[:-1, :]) / eval_step
+    V2 = [velocity(t) for t in t_eval2]
+    V2_noisy = []
+    for V in V2:
+        noise = SV.random_diag_normal(
+            mean=vel_noise_bias, cov_diag=vel_noise_cov_diag, rng=rng
+        )
+        if planar:
+            noise.linear[2] = 0
+            noise.angular[:2] = 0
+        V2_noisy.append(V + noise)
+
+    As_noisy = []
+    for i in range(1, len(V2_noisy)):
+        As_noisy.append((V2_noisy[i] - V2_noisy[i - 1]) / eval_step)
 
     # apply noise to wrench
-    if wrench_noise_bias is None:
-        wrench_noise_bias = np.zeros(6)
-    if wrench_noise_cov is None:
-        wrench_noise_cov = np.zeros((6, 6))
-    assert wrench_noise_bias.shape == (6,)
-    assert wrench_noise_cov.shape == (6, 6)
-
-    wrench_noise = rng.multivariate_normal(
-        mean=wrench_noise_bias, cov=wrench_noise_cov, size=ws.shape[0]
-    )
-    ws_noisy = ws + wrench_noise
+    ws_noisy = []
+    for w in ws:
+        noise = SV.random_diag_normal(
+            mean=wrench_noise_bias,
+            cov_diag=wrench_noise_cov_diag,
+            rng=rng,
+        )
+        ws_noisy.append(w + noise)
 
     return {
         "Vs": Vs,

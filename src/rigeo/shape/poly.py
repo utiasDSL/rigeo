@@ -357,3 +357,9 @@ class ConvexPolyhedron(Shape):
         return InertialParameters.from_point_masses(
             masses=masses, points=self.vertices
         )
+
+    def grid(self, n):
+        box = self.aabb()
+        grid = box.grid(n)
+        idx = self.contains(grid)
+        return grid[idx, :]

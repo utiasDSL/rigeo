@@ -2,6 +2,7 @@ import numpy as np
 
 from .util import skew3, vech
 from .random import random_psd_matrix
+from .spatial import SV
 
 
 def H2I(H):
@@ -250,4 +251,4 @@ class InertialParameters:
     def body_wrench(self, V, A):
         """Compute the body-frame wrench about the reference point."""
         M = self.M
-        return M @ A.vec - V.adjoint().T @ M @ V.vec
+        return SV.from_vec(M @ A.vec - V.adjoint().T @ M @ V.vec)

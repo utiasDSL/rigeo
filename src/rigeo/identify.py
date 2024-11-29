@@ -177,7 +177,7 @@ class IdentificationProblem:
         constraints = [c for J in Js for c in pim_psd(J, self.ε)]
         if must_realize:
             for body, J in zip(bodies, Js):
-                constraints.extend(body.must_realize(J))
+                constraints.extend(body.moment_sdp_constraints(J))
 
         if com_bounding_shapes is not None:
             for shape, J in zip(com_bounding_shapes, Js):
@@ -197,6 +197,121 @@ class IdentificationProblem:
 
         return IdentificationResult(
             params=[InertialParameters.from_vec(θ.value) for θ in θs],
+            objective=objective.value,
+            iters=problem.solver_stats.num_iters,
+            solve_time=t1 - t0,
+        )
+
+
+class DiscretizedIdentificationProblem:
+    """Inertial parameter identification problem.
+
+    The problem is formulated as a convex, constrained least-squares problem
+    and solved via cxvpy.
+
+    Attributes
+    ----------
+    As : np.ndarray or Iterable[np.ndarray]
+        The regressor matrices.
+    bs : np.ndarray or Iterable[np.ndarray]
+        The regressor vectors.
+    γ : float, non-negative
+        The coefficient of the regularization term.
+    ε : float, non-negative
+        The value such that each body satisfies
+        :math:`\\boldsymbol{J}\\succcurlyeq\\epsilon\\boldsymbol{1}_4`.
+    solver : str or None
+        The underlying solver for cvxpy to use.
+    problem : cxvpy.Problem
+        Once ``solve`` has been called, the underlying ``cvxpy.Problem``
+        instance is made available for inspection.
+    """
+
+    def __init__(self, As, bs, Σ=None, γ=0, ε=0, **kwargs):
+        assert As.shape[0] == bs.shape[0]
+        assert γ >= 0
+        assert ε >= 0
+
+        self.no = As.shape[0]  # number of observations
+
+        self.As = As
+        self.bs = bs
+
+        self.γ = γ
+        self.ε = ε
+
+        # measurement covariance matrix
+        if Σ is not None:
+            self.W0 = np.linalg.inv(Σ)
+        else:
+            self.W0 = None
+
+        self.solve_kwargs = kwargs
+
+    def solve(self, points, com_bounding_shape=None):
+        """Solve the identification problem.
+
+        Additional ``kwargs`` are passed to the `solve` method of the
+        `cvxpy.Problem` instance.
+
+        Parameters
+        ----------
+        bodies : Iterable[RigidBody]
+            The rigid bodies used to (1) constrain the parameters to be
+            realizable within their shapes and (2) to provide nominal
+            parameters for regularization.
+        must_realize : bool
+            If ``True``, enforce density realizable constraints. If ``False``,
+            the problem is unconstrained except that each pseudo-inertia matrix
+            must be positive definite.
+        com_bounding_shapes : Iterable[Shape]
+            Optional bounding shapes for the centers of mass of the bodies.
+
+        Returns
+        -------
+        : Iterable[InertialParameters]
+            The identified inertial parameters for each body.
+        """
+        n = len(points)
+
+        # variables
+        θ = cp.Variable(10)
+        J = pim_must_equal_vec(θ)
+        μs = cp.Variable(n, nonneg=True)
+
+        # homogeneous representation
+        Ps = np.array([np.append(p, 1) for p in points])
+
+        # objective
+        lstsq = least_squares_objective([θ], self.As, self.bs, W0=self.W0)
+        # TODO would need to pass the body in for this
+        # if self.γ > 0:
+        #     J0s = [body.params.J for body in bodies]
+        #     regularizer = entropic_regularizer(Js, J0s)
+        #     cost = 0.5 / self.no * lstsq + self.γ * regularizer
+        # else:
+        cost = 0.5 / self.no * lstsq
+        objective = cp.Minimize(cost)
+
+        # constraints
+        constraints = [J == cp.sum([μ * np.outer(P, P) for μ, P in zip(μs, Ps)])]
+        if com_bounding_shape is not None:
+            m = J[3, 3]
+            h = J[:3, 3]
+            constraints.extend(com_bounding_shape.must_contain(h, scale=m))
+
+        problem = cp.Problem(objective, constraints)
+
+        t0 = time.time()
+        problem.solve(**self.solve_kwargs)
+        t1 = time.time()
+
+        assert (
+            problem.status == "optimal"
+        ), f"Optimization failed with status {problem.status}"
+
+        return IdentificationResult(
+            params=[InertialParameters.from_vec(θ.value)],
             objective=objective.value,
             iters=problem.solver_stats.num_iters,
             solve_time=t1 - t0,
