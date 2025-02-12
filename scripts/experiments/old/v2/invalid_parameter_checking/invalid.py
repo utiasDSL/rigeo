@@ -88,7 +88,7 @@ def sufficient(n_points):
     Jd = cp.Parameter((4, 4), PSD=True)
 
     # objective = cp.Minimize(cp.norm2(θd - θ))
-    objective = cp.Minimize(cp.norm(Jd - J, "fro"))
+    objective = cp.Minimize(cp.norm(Jd - J, 2))
 
     def _disc_problem(grid):
         μs = cp.Variable(grid.shape[0], nonneg=True)
@@ -101,18 +101,15 @@ def sufficient(n_points):
     problem3 = _disc_problem(grid3)
     problem4 = _disc_problem(grid4)
 
-    # params = rg.InertialParameters.from_point_masses(
-    #     masses=[1], points=[[0.45, 0.45, 0.45]]
-    # )
-    # Jd.value = params.J
-    # problem4.solve(solver=SOLVER)
-    # assert problem4.status == cp.OPTIMAL
-    # print(f"problem 4 = {problem4.value}")
-    # IPython.embed()
-    # return
-
-    # TODO we may also want to try using the geodesic distance
-    # TODO maybe this is always fine? can you prove the worst case?
+    params = rg.InertialParameters.from_point_masses(
+        masses=[1], points=[[0.45, 0.45, 0.45]]
+    )
+    Jd.value = params.J
+    problem4.solve(solver=SOLVER)
+    assert problem4.status == cp.OPTIMAL
+    print(f"problem 4 = {problem4.value}")
+    IPython.embed()
+    return
 
     for i in range(N):
         points = box.random_points(shape=n_points, rng=rng)

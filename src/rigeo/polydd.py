@@ -173,6 +173,7 @@ class FaceForm:
     """Face form (H-rep) of a convex polyhedron."""
 
     def __init__(self, A_ineq, b_ineq, A_eq=None, b_eq=None):
+        """A_ineq @ x <= b_ineq, A_eq @ x == b_eq."""
         # we use an inequality-only representation, where equalities are
         # represented by two-sided inequalities
         if A_eq is not None:
