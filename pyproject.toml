@@ -19,7 +19,7 @@ cvxpy = {version="^1.4.2", extras=["MOSEK"]}
 pycddlib = "^2.1.6"
 wrlparser = "^1.0"
 docutils = "0.20.1"  # needed to resolve subdependencies of xacrodoc
-xacrodoc = "^0.4.0"
+xacrodoc = ">=0.4.0,<1.0.0"
 pin = ">=2.6.0"
 hpp-fcl = ">=2.2.0"
 spatialmath-python = "^1.1.10"

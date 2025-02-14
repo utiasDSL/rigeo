@@ -1,10 +1,11 @@
 """Compare the moment SDP constraints with specialized box constraints."""
+import datetime
 import time
-import tqdm
 
 import numpy as np
 import cvxpy as cp
 import rigeo as rg
+import tqdm
 
 import IPython
 
@@ -86,7 +87,8 @@ def random_optimal_values():
 def main():
     data = random_optimal_values()
 
-    outfile = "moment_vs_cuboid.npz"
+    timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
+    outfile = f"moment_vs_cuboid_{timestamp}.npz"
     np.savez(outfile, **data)
     print(f"Saved data to {outfile}")
 
