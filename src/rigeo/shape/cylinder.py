@@ -3,6 +3,7 @@ import numpy as np
 
 from ..constraint import pim_must_equal_param_var
 from ..inertial import InertialParameters
+from ..moment import Polynomial, MomentMatrix
 from ..random import random_points_in_ball
 from ..util import clean_transform, transform_matrix_inv
 from .base import Shape
@@ -89,6 +90,12 @@ class Cylinder(Shape):
             for disk in self.disk0s
         ]
 
+        self._poly0s = [
+            Polynomial({"001": 1, "000": h}),
+            Polynomial({"001": -1, "000": h}),
+            Polynomial({"200": -1, "020": -1, "000": self.radius**2}),
+        ]
+
     @property
     def longitudinal_axis(self):
         return self.rotation[:, 2]
@@ -128,8 +135,36 @@ class Cylinder(Shape):
             for c in E.must_contain(P, scale=scale)
         ]
 
+    def moment_sdp_feasibility_problem(self, param_var, eps=0, d=2):
+        objective = cp.Minimize([0])
+        constraints = self.moment_sdp_constraints(param_var, eps=eps, d=d)
+        return cp.Problem(objective, constraints)
+
     def moment_sdp_constraints(self, param_var, eps=0, d=2):
-        raise NotImplementedError()
+        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
+
+        # transform back to the origin
+        T = transform_matrix_inv(
+            rotation=self.rotation, translation=self.center
+        )
+        J0 = T @ J @ T.T
+
+        m = J0[3, 3]
+        h = J0[:3, 3]
+        H = J0[:3, :3]
+
+        moment = MomentMatrix(n=3, d=d)
+        M = cp.Variable(moment.shape, PSD=True)
+
+        # import IPython
+        # IPython.embed()
+        # raise ValueError("stop")
+
+        return (
+            moment.moment_constraints(M)
+            + moment.localizing_constraints(M, polys=self._poly0s)
+            + [m == M[0, 0], h == M[0, 1:4], H == M[1:4, 1:4]]
+        )
 
     def moment_cylinder_vertex_constraints(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
@@ -143,24 +178,23 @@ class Cylinder(Shape):
         H = J0[:3, :3]
 
         Js = [cp.Variable((4, 4), PSD=True) for _ in self.disk0s]
-        J_sum = cp.Variable((4, 4), PSD=True)
-        m_sum = J_sum[3, 3]
+        J_sum = cp.sum(Js)
 
-        # TODO can I actually realize the xx and yy H components exactly?
+        disk_constraints = [
+            c
+            for J, disk in zip(Js, self.disk0s)
+            for c in disk.moment_constraints(J, eps=eps)
+        ]
+
         return (
             psd_constraints
+            + disk_constraints
             + [
-                J_sum == cp.sum(Js),
-                m == m_sum,
                 cp.upper_tri(J0) == cp.upper_tri(J_sum),
                 H[0, 0] == J_sum[0, 0],
                 H[1, 1] == J_sum[1, 1],
                 H[2, 2] <= J_sum[2, 2],
-            ]
-            + [
-                c
-                for J, disk in zip(Js, self.disk0s)
-                for c in disk.moment_constraints(J, eps=eps)
+                m == J_sum[3, 3],
             ]
         )
 

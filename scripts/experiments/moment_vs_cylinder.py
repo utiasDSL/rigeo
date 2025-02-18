@@ -33,17 +33,16 @@ def random_optimal_values():
     rng = np.random.default_rng(0)
 
     mass = 1
-    half_extents = np.array([0.5, 1, 1.5])
-    box = rg.Box(half_extents)
+    cylinder = rg.Cylinder(radius=0.5, length=1)
 
     problem_moment_d2, D_moment_d2 = setup_drip_problem(
-        mass, partial(box.moment_sdp_constraints, d=2)
+        mass, partial(cylinder.moment_sdp_constraints, d=2)
     )
     problem_moment_d3, D_moment_d3 = setup_drip_problem(
-        mass, partial(box.moment_sdp_constraints, d=3)
+        mass, partial(cylinder.moment_sdp_constraints, d=3)
     )
     problem_box, D_box = setup_drip_problem(
-        mass, box.moment_box_vertex_constraints
+        mass, cylinder.moment_cylinder_vertex_constraints
     )
 
     moment_d2_values = []
@@ -104,6 +103,7 @@ def random_optimal_values():
         # if problem_box.value > problem_moment.value + 1e-3:
         #     print("box constraints not as tight!")
         #     IPython.embed()
+    raise ValueError("stop")
 
     return {
         "moment_d2_values": np.array(moment_d2_values),

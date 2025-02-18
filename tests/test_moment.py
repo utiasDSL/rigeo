@@ -31,6 +31,20 @@ def test_polynomial_evaluate():
     assert np.isclose(p.evaluate(x=[2, 0, 0]), 4)
 
 
+def test_polynomial_add():
+    p1 = rg.Polynomial({"100": 1})
+    p2 = rg.Polynomial({"200": 1})
+    p = p1 + p2
+
+    assert np.isclose(p.evaluate(x=[2, 0, 0]), 6)
+
+    p1 = rg.Polynomial({"100": 1})
+    p2 = rg.Polynomial({"100": -1})
+    p = p1 + p2
+
+    assert np.isclose(p.evaluate(x=[2, 0, 0]), 0)
+
+
 def test_moment_matrix():
     M = rg.MomentMatrix(n=1, d=2)
     M_expected = np.array(

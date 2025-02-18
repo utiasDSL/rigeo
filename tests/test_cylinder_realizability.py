@@ -11,18 +11,27 @@ def test_cylinder_at_origin():
     n = 10  # number of point masses per trial
 
     cylinder = rg.Cylinder(length=1, radius=0.5)
-    bounding_box = rg.Box(half_extents=[0.5, 0.5, 0.5])
+
+    # set up the feasibility problem
+    J = cp.Parameter((4, 4), PSD=True)
+    problem = cylinder.moment_sdp_feasibility_problem(J)
 
     for i in range(N):
         points = cylinder.random_points(n, rng=rng)
         masses = rng.random(points.shape[0])
         params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-        assert cylinder.can_realize(params, solver=cp.MOSEK)
+
+        # solve the problem
+        J.value = params.J
+        problem.solve(solver=cp.MOSEK)
+        assert problem.status == "optimal"
 
     points = np.array([[0, 0.5, 0.5], [0, -0.5, -0.5]])
     masses = [0.5, 0.5]
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert cylinder.can_realize(params, solver=cp.MOSEK)
+    J.value = params.J
+    problem.solve(solver=cp.MOSEK)
+    assert problem.status == "optimal"
 
     # fmt: off
     points = 0.5 * np.array([
@@ -31,13 +40,17 @@ def test_cylinder_at_origin():
     # fmt: on
     masses = np.ones(8)
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert cylinder.can_realize(params, solver=cp.MOSEK)
+    J.value = params.J
+    problem.solve(solver=cp.MOSEK)
+    assert problem.status == "optimal"
 
     # infeasible cases
     points = 1.1 * np.array([[0, 0.5, 0.5], [0, -0.5, -0.5]])
     masses = [0.5, 0.5]
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not cylinder.can_realize(params, solver=cp.MOSEK)
+    J.value = params.J
+    problem.solve(solver=cp.MOSEK)
+    assert not problem.status == "optimal"
 
     points = 0.6 * np.array([
         [1., 0, 1], [0, 1, 1], [-1, 0, 1], [0, -1, 1],
@@ -45,7 +58,9 @@ def test_cylinder_at_origin():
     # fmt: on
     masses = np.ones(8)
     params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
-    assert not cylinder.can_realize(params, solver=cp.MOSEK)
+    J.value = params.J
+    problem.solve(solver=cp.MOSEK)
+    assert not problem.status == "optimal"
 
 
 def test_cylinder_moment_vertex_constraints():

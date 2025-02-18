@@ -54,10 +54,9 @@ class Polynomial:
                 self.coefficients[key] = coeff
 
     @classmethod
-    def zeros(cls, n, d):
-        """Create a polynomial of degree ``d`` in ``n`` dimensions with all coefficients zero."""
-        b = cls.basis(n, d)
-        return cls({idx: 0 for idx in b})
+    def zeros(cls):
+        """Create a polynomial with all coefficients zero."""
+        return cls(coefficients={})
 
     @classmethod
     def ones(cls, n, d):

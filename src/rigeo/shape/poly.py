@@ -275,9 +275,9 @@ class ConvexPolyhedron(Shape):
     #
     #     return np.min(np.linalg.eigvals(H_max - params.H)) >= -tol
 
-    def moment_sdp_feasibility_problem(self, param_param, eps=0, d=2):
+    def moment_sdp_feasibility_problem(self, param_var, eps=0, d=2):
         objective = cp.Minimize([0])
-        constraints = self.moment_sdp_constraints(param_param, eps=eps, d=d)
+        constraints = self.moment_sdp_constraints(param_var, eps=eps, d=d)
         return cp.Problem(objective, constraints)
 
     def moment_sdp_constraints(self, param_var, eps=0, d=2):
