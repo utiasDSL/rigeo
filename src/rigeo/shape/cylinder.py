@@ -4,7 +4,7 @@ import numpy as np
 from ..constraint import pim_must_equal_param_var
 from ..inertial import InertialParameters
 from ..random import random_points_in_ball
-from ..util import clean_transform
+from ..util import clean_transform, transform_matrix_inv
 from .base import Shape
 from .box import Box
 from .ellipsoid import Ellipsoid
@@ -67,19 +67,27 @@ class Cylinder(Shape):
         self._Us = [U1, U2]
 
         # disks that make up the convex hull
+        # TODO can I just use one of ellipsoids or disks?
+        h = 0.5 * self.length
         disk_extents = [self.radius, self.radius, 0]
-        disk_centers = self.endpoints()
+        disk_centers = np.array([[0, 0, h], [0, 0, -h]])
+
+        # disk_centers = self.endpoints()
         disk1 = Ellipsoid(
             half_extents=disk_extents,
             center=disk_centers[0],
-            rotation=self.rotation,
+            # rotation=self.rotation,
         )
         disk2 = Ellipsoid(
             half_extents=disk_extents,
             center=disk_centers[1],
-            rotation=self.rotation,
+            # rotation=self.rotation,
         )
-        self.disks = [disk1, disk2]
+        self.disk0s = [disk1, disk2]
+        self.disks = [
+            disk.transform(rotation=self.rotation, translation=self.center)
+            for disk in self.disk0s
+        ]
 
     @property
     def longitudinal_axis(self):
@@ -123,26 +131,50 @@ class Cylinder(Shape):
     def moment_sdp_constraints(self, param_var, eps=0, d=2):
         raise NotImplementedError()
 
-    def moment_vertex_constraints(self, param_var, eps=0):
+    def moment_cylinder_vertex_constraints(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
+        T = transform_matrix_inv(
+            rotation=self.rotation, translation=self.center
+        )
 
-        Js = [cp.Variable((4, 4), PSD=True) for _ in self.disks]
+        # transform back to the origin
+        J0 = T @ J @ T.T
+        m = J0[3, 3]
+        H = J0[:3, :3]
+
+        Js = [cp.Variable((4, 4), PSD=True) for _ in self.disk0s]
         J_sum = cp.Variable((4, 4), PSD=True)
+        m_sum = J_sum[3, 3]
 
+        # TODO can I actually realize the xx and yy H components exactly?
         return (
             psd_constraints
             + [
                 J_sum == cp.sum(Js),
-                J[3, 3] == J_sum[3, 3],
-                J[:3, 3] == J_sum[:3, 3],
-                J[:3, :3] << J_sum[:3, :3],
+                m == m_sum,
+                cp.upper_tri(J0) == cp.upper_tri(J_sum),
+                H[0, 0] == J_sum[0, 0],
+                H[1, 1] == J_sum[1, 1],
+                H[2, 2] <= J_sum[2, 2],
             ]
             + [
                 c
-                for J, disk in zip(Js, self.disks)
-                for c in disk.moment_constraints(J, eps=0)
+                for J, disk in zip(Js, self.disk0s)
+                for c in disk.moment_constraints(J, eps=eps)
             ]
         )
+
+        # + [
+        #     J_sum == cp.sum(Js),
+        #     J[3, 3] == J_sum[3, 3],
+        #     J[:3, 3] == J_sum[:3, 3],
+        #     J[:3, :3] << J_sum[:3, :3],
+        # ]
+        # + [
+        #     c
+        #     for J, disk in zip(Js, self.disks)
+        #     for c in disk.moment_constraints(J, eps=0)
+        # ]
 
     def transform(self, rotation=None, translation=None):
         rotation, translation = clean_transform(

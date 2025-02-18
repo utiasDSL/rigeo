@@ -133,9 +133,6 @@ def compute_run_data(directory):
     run_data = RunData()
 
     for i in tqdm.trange(ts.shape[0]):
-        # TODO
-        if i > 5:
-            break
         if ts[i] > model.settings.mpc.time_horizon:
             break
         run_data.times.append(ts[i])
