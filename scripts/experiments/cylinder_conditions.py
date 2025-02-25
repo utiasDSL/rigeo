@@ -1,4 +1,4 @@
-"""Compare the moment SDP constraints with specialized box constraints."""
+"""Compare the moment SDP constraints with specialized cylinder constraints."""
 import datetime
 import time
 from functools import partial
@@ -10,17 +10,12 @@ import tqdm
 
 import IPython
 
-# TODO do bounding ellipsoid as well
-
 N = 10
 
 
 def setup_drip_problem(mass, drip_constraints):
     J = cp.Variable((4, 4), PSD=True)
     D = cp.Parameter((4, 4), symmetric=True)
-
-    c = J[:3, 3] / mass  # CoM
-    m = J[3, 3]  # mass
 
     objective = cp.Maximize(cp.trace(D @ J))
     constraints = [J[3, 3] == mass] + drip_constraints(J)

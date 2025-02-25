@@ -20,7 +20,9 @@ def test_cube_at_origin_feasibility():
     for i in range(N):
         points = box.random_points(n, rng=rng)
         masses = rng.random(n)
-        params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+        params = rg.InertialParameters.from_point_masses(
+            masses=masses, points=points
+        )
 
         # solve the problem
         J.value = params.J
@@ -29,13 +31,17 @@ def test_cube_at_origin_feasibility():
 
     points = np.array([-box.half_extents, box.half_extents])
     masses = [0.5, 0.5]
-    params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+    params = rg.InertialParameters.from_point_masses(
+        masses=masses, points=points
+    )
     J.value = params.J
     problem.solve(solver=cp.MOSEK)
     assert problem.status == "optimal"
 
     masses = np.ones(8)
-    params = rg.InertialParameters.from_point_masses(masses=masses, points=box.vertices)
+    params = rg.InertialParameters.from_point_masses(
+        masses=masses, points=box.vertices
+    )
     J.value = params.J
     problem.solve(solver=cp.MOSEK)
     assert problem.status == "optimal"
@@ -43,7 +49,9 @@ def test_cube_at_origin_feasibility():
     # infeasible case
     points = np.array([-box.half_extents, 1.1 * box.half_extents])
     masses = [0.5, 0.5]
-    params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+    params = rg.InertialParameters.from_point_masses(
+        masses=masses, points=points
+    )
     J.value = params.J
     problem.solve(solver=cp.MOSEK)
     assert not problem.status == "optimal"
@@ -64,7 +72,9 @@ def test_box_offset_from_origin_feasibility():
     for i in range(N):
         points = box.random_points(n, rng=rng)
         masses = rng.random(n)
-        params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+        params = rg.InertialParameters.from_point_masses(
+            masses=masses, points=points
+        )
 
         # solve the problem
         J.value = params.J
@@ -88,7 +98,9 @@ def test_box_transformed_feasibility():
         # random parameters
         points = box.random_points(n, rng=rng)
         masses = rng.random(n)
-        params = rg.InertialParameters.from_point_masses(masses=masses, points=points)
+        params = rg.InertialParameters.from_point_masses(
+            masses=masses, points=points
+        )
 
         # solve the feasibility problem
         J = cp.Parameter((4, 4), PSD=True, value=params.J)
@@ -144,3 +156,48 @@ def test_cube_moment_sdp_constraints_vec():
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)
     assert np.isclose(objective.value, 0.5)
+
+
+def _setup_drip_problem(mass, drip_constraints, **kwargs):
+    J = cp.Variable((4, 4), PSD=True)
+    D = cp.Parameter((4, 4), symmetric=True)
+
+    objective = cp.Maximize(cp.trace(D @ J))
+    constraints = [J[3, 3] == mass] + drip_constraints(J, **kwargs)
+    problem = cp.Problem(objective, constraints)
+    return problem, D
+
+
+def test_box_moment_vs_vertex():
+    # compare the tightness of the moment and vertex constraints
+    rng = np.random.default_rng(0)
+
+    N = 100
+    tol = 1e-6
+
+    mass = 1
+    half_extents = np.array([0.5, 1, 1.5])
+    box = rg.Box(half_extents)
+
+    problem_moment, D_moment = _setup_drip_problem(
+        mass, box.moment_sdp_constraints, d=2
+    )
+    problem_box, D_box = _setup_drip_problem(
+        mass, box.moment_box_vertex_constraints
+    )
+
+    for _ in range(N):
+        Dvec = rng.uniform(low=-1, high=1, size=10)
+        D = rg.unvech(Dvec)
+
+        D_moment.value = D
+        D_box.value = D
+
+        problem_moment.solve(solver=cp.MOSEK)
+        assert problem_moment.status == "optimal"
+
+        problem_box.solve(solver=cp.MOSEK)
+        assert problem_box.status == "optimal"
+
+        # vertex constraints are tighter than the moment constraints
+        assert problem_box.value <= problem_moment.value + tol

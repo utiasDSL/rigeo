@@ -1,11 +1,11 @@
 """Compare the moment SDP constraints with specialized box constraints."""
 import datetime
 import time
-from functools import partial
 
 import numpy as np
 import cvxpy as cp
 import rigeo as rg
+from scipy.spatial.transform import Rotation
 import tqdm
 
 import IPython
@@ -15,15 +15,12 @@ import IPython
 N = 10
 
 
-def setup_drip_problem(mass, drip_constraints):
+def setup_drip_problem(mass, drip_constraints, **kwargs):
     J = cp.Variable((4, 4), PSD=True)
     D = cp.Parameter((4, 4), symmetric=True)
 
-    c = J[:3, 3] / mass  # CoM
-    m = J[3, 3]  # mass
-
     objective = cp.Maximize(cp.trace(D @ J))
-    constraints = [J[3, 3] == mass] + drip_constraints(J)
+    constraints = [J[3, 3] == mass] + drip_constraints(J, **kwargs)
     problem = cp.Problem(objective, constraints)
     return problem, D
 
@@ -36,11 +33,15 @@ def random_optimal_values():
     half_extents = np.array([0.5, 1, 1.5])
     box = rg.Box(half_extents)
 
+    R = Rotation.random(random_state=rng).as_matrix()
+    t = rng.uniform(low=-1, high=1, size=3)
+    box = box.transform(rotation=R, translation=t)
+
     problem_moment_d2, D_moment_d2 = setup_drip_problem(
-        mass, partial(box.moment_sdp_constraints, d=2)
+        mass, box.moment_sdp_constraints, d=2
     )
     problem_moment_d3, D_moment_d3 = setup_drip_problem(
-        mass, partial(box.moment_sdp_constraints, d=3)
+        mass, box.moment_sdp_constraints, d=3
     )
     problem_box, D_box = setup_drip_problem(
         mass, box.moment_box_vertex_constraints
@@ -93,9 +94,9 @@ def random_optimal_values():
         box_times.append(t1 - t0)
         box_values.append(problem_box.value)
 
-        print(f"d2  = {problem_moment_d2.value}")
-        print(f"d3  = {problem_moment_d3.value}")
-        print(f"box = {problem_box.value}")
+        print(f"d2  = {moment_d2_values[-1]}")
+        print(f"d3  = {moment_d3_values[-1]}")
+        print(f"box = {box_values[-1]}")
 
         print(f"d2  = {moment_d2_times[-1]}")
         print(f"d3  = {moment_d3_times[-1]}")
@@ -105,6 +106,7 @@ def random_optimal_values():
         #     print("box constraints not as tight!")
         #     IPython.embed()
 
+    raise ValueError("stop here")
     return {
         "moment_d2_values": np.array(moment_d2_values),
         "moment_d3_values": np.array(moment_d3_values),
