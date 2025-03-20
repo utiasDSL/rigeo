@@ -1,3 +1,4 @@
+#!/usr/bin/env python3
 """Compare the moment SDP constraints with specialized box constraints."""
 import datetime
 import time
@@ -10,9 +11,7 @@ import tqdm
 
 import IPython
 
-# TODO do bounding ellipsoid as well
-
-N = 10
+N = 1000
 
 
 def setup_drip_problem(mass, drip_constraints, **kwargs):
@@ -25,7 +24,7 @@ def setup_drip_problem(mass, drip_constraints, **kwargs):
     return problem, D
 
 
-def random_optimal_values():
+def random_optimal_values(verbose=False):
     """Compare optimal extreme values."""
     rng = np.random.default_rng(0)
 
@@ -33,9 +32,9 @@ def random_optimal_values():
     half_extents = np.array([0.5, 1, 1.5])
     box = rg.Box(half_extents)
 
-    R = Rotation.random(random_state=rng).as_matrix()
-    t = rng.uniform(low=-1, high=1, size=3)
-    box = box.transform(rotation=R, translation=t)
+    # R = Rotation.random(random_state=rng).as_matrix()
+    # t = rng.uniform(low=-1, high=1, size=3)
+    # box = box.transform(rotation=R, translation=t)
 
     problem_moment_d2, D_moment_d2 = setup_drip_problem(
         mass, box.moment_sdp_constraints, d=2
@@ -63,16 +62,6 @@ def random_optimal_values():
         D_moment_d3.value = D
         D_box.value = D
 
-        # try:
-        #     t0 = time.time()
-        #     problem_moment.solve(solver=cp.MOSEK)
-        #     t1 = time.time()
-        #     moment_times.append(t1 - t0)
-        #     moment_values.append(problem_moment.value)
-        # except cp.error.SolverError:
-        #     print("moment problem failed to solve - skipping")
-        #     continue
-
         t0 = time.time()
         problem_moment_d2.solve(solver=cp.MOSEK)
         t1 = time.time()
@@ -94,19 +83,15 @@ def random_optimal_values():
         box_times.append(t1 - t0)
         box_values.append(problem_box.value)
 
-        print(f"d2  = {moment_d2_values[-1]}")
-        print(f"d3  = {moment_d3_values[-1]}")
-        print(f"box = {box_values[-1]}")
+        if verbose:
+            print(f"d2  = {moment_d2_values[-1]}")
+            print(f"d3  = {moment_d3_values[-1]}")
+            print(f"box = {box_values[-1]}")
 
-        print(f"d2  = {moment_d2_times[-1]}")
-        print(f"d3  = {moment_d3_times[-1]}")
-        print(f"box = {box_times[-1]}\n")
+            print(f"d2  = {moment_d2_times[-1]}")
+            print(f"d3  = {moment_d3_times[-1]}")
+            print(f"box = {box_times[-1]}\n")
 
-        # if problem_box.value > problem_moment.value + 1e-3:
-        #     print("box constraints not as tight!")
-        #     IPython.embed()
-
-    raise ValueError("stop here")
     return {
         "moment_d2_values": np.array(moment_d2_values),
         "moment_d3_values": np.array(moment_d3_values),
@@ -121,7 +106,7 @@ def main():
     data = random_optimal_values()
 
     timestamp = datetime.datetime.now().strftime("%Y-%m-%d_%H-%M-%S")
-    outfile = f"moment_vs_box_{timestamp}.npz"
+    outfile = f"box_drip_data_{timestamp}.npz"
     np.savez(outfile, **data)
     print(f"Saved data to {outfile}")
 

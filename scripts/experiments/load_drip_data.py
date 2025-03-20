@@ -12,11 +12,6 @@ DATA_FILES = [
     "drip_data/robust_h60_2025-01-20_18-28-33_drip_data.npz",
 ]
 
-# TODO:
-# * compute average times for all
-# * compute max differences mom box for all
-# * compute actual violations for all
-
 
 def flatten_times(times):
     # get rid of the first solve in each run (which takes longer), then flatten
