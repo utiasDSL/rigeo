@@ -15,7 +15,6 @@ dependencies = [
   "scipy>=1.10.0",
   "cvxpy[MOSEK]>=1.4.2,<1.5.0", # >=1.5.0 requires Python 3.9
   "pycddlib>=2.1.6",
-  "wrlparser>=1.0",
   "xacrodoc>=0.4.0",
   "pin>=2.6.0",
   "hpp-fcl>=2.2.0",
