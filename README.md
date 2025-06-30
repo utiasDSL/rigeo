@@ -6,14 +6,14 @@ applications to robotic manipulation.
 
 ## Density Realizable Inertial Parameters
 
-The main feature of this library is a set of necessary conditions for **density
-realizability** on shapes which can be described as *convex hulls of
-ellipsoids* (which includes convex polyhedra, cylinders, and capsules). A set
-of inertial parameters (i.e., mass, center of mass, inertia matrix) is called
+One of the main features of this library is a set of necessary conditions for
+**density realizability** on 3D shapes based on moment relaxations (see [this
+paper](https://arxiv.org/abs/2411.07079) for more information). A set of
+inertial parameters (i.e., mass, center of mass, inertia matrix) is called
 *density realizable* on a given shape if it can be physically realized by
-*some* rigid body contained in that shape. These conditions can be included in
-constraints as semidefinite programs for inertial parameter identification for
-motion and force-torque data.
+*some* rigid body contained in that shape. These conditions can be included as
+constraints in semidefinite programs for inertial parameter identification or
+for checking robustness to inertial parameter uncertainty.
 
 ## Other Features
 
@@ -32,23 +32,23 @@ motion and force-torque data.
 
 ## Installation
 
-The library has been tested on Ubuntu 20.04 using Python 3.8; newer Python
-versions and OS versions may also work. Optimization problems use
-[cvxpy](https://www.cvxpy.org/); MOSEK is installed by default and is used as
-the solver for the tests.
+The library requires Python >=3.8. It has been tested on Ubuntu 20.04 and
+24.04. Optimization problems use [cvxpy](https://www.cvxpy.org/); MOSEK is
+installed by default and is used as the solver for the tests. Academic licenses
+for MOSEK can be obtained for free. If this is not an option for you, Clarabel
+is a reasonable open-source alternative.
 
 From pip:
 ```
 pip install rigeo
 ```
 
-From source (using [poetry](https://python-poetry.org)):
+From source (using [uv](https://docs.astral.sh/uv/)):
 ```
 git clone https://github.com/utiasDSL/rigeo
 cd rigeo
-poetry shell
-poetry install
-# do stuff ...
+uv venv
+uv sync
 ```
 
 From source (using pip):
@@ -64,6 +64,12 @@ Tests are run using pytest:
 ```
 cd tests
 python -m pytest .
+```
+
+To test against different Python versions, use:
+```
+# for example
+uv run --isolated --python=3.9 pytest
 ```
 
 ## License

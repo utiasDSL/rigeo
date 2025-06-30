@@ -75,39 +75,6 @@ class Capsule(Shape):
             rotation=rotation, translation=translation
         ).capsule()
 
-    def can_realize(self, params, eps=0, **kwargs):
-        if not params.consistent(eps=eps):
-            return False
-
-        J = cp.Variable((4, 4), PSD=True)
-
-        objective = cp.Minimize([0])  # feasibility problem
-        constraints = self.must_realize(J) + [J == params.J]
-        problem = cp.Problem(objective, constraints)
-        problem.solve(**kwargs)
-        return problem.status == "optimal"
-
-    def must_realize(self, param_var, eps=0):
-        J, psd_constraints = pim_must_equal_param_var(param_var, eps)
-
-        Js = [cp.Variable((4, 4), PSD=True) for _ in self.caps]
-        J_sum = cp.Variable((4, 4), PSD=True)
-
-        return (
-            psd_constraints
-            + [
-                J_sum == cp.sum(Js),
-                J[3, 3] == J_sum[3, 3],
-                J[:3, 3] == J_sum[:3, 3],
-                J[:3, :3] << J_sum[:3, :3],
-            ]
-            + [
-                c
-                for J, cap in zip(Js, self.caps)
-                for c in cap.must_realize(J, eps=0)
-            ]
-        )
-
     def aabb(self):
         points = np.vstack([cap.aabb().vertices for cap in self.caps])
         return Box.from_points_to_bound(points)
