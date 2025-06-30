@@ -1,6 +1,5 @@
 """Three-dimensional rigid bodies."""
 from collections.abc import Iterable
-from dataclasses import dataclass
 import time
 
 import numpy as np
@@ -10,14 +9,6 @@ from .util import clean_transform, lift6
 from .inertial import InertialParameters
 from .constraint import pim_must_equal_param_var
 from .shape.ellipsoid import Ellipsoid
-
-
-@dataclass
-class VerificationStats:
-    """Stats of parameter verification optimization."""
-
-    iters: int
-    solve_time: float
 
 
 class RigidBody:
@@ -53,68 +44,6 @@ class RigidBody:
             return self
         return self.__add__(other)
 
-    # def is_realizable(self, eps=0, verbose=False, **kwargs):
-    #     """Check if the rigid body is density realizable.
-    #
-    #     Parameters
-    #     ----------
-    #     solver : str or None
-    #         If checking realizability requires solving an optimization problem,
-    #         one can optionally be specified.
-    #
-    #     Returns
-    #     -------
-    #     : bool
-    #         ``True`` if ``self.params`` is realizable on ``self.shapes``,
-    #         ``False`` otherwise.
-    #     """
-    #     return self.can_realize(self.params, eps=eps, verbose=verbose, **kwargs)
-    #
-    # def can_realize(self, params, eps=0, verbose=False, **kwargs):
-    #     """Check if the rigid body can realize a set of inertial parameters.
-    #
-    #     Parameters
-    #     ----------
-    #     params : InertialParameters
-    #         The inertial parameters to check.
-    #     eps : float, non-negative
-    #         Pseudo-inertia matrix ``J`` is constrained such that ``J - eps *
-    #         np.eye(4)`` is positive semidefinite and J is symmetric.
-    #
-    #     Additional arguments are passed to the solver.
-    #
-    #     Returns
-    #     -------
-    #     : bool
-    #         ``True`` if the parameters are realizable, ``False`` otherwise.
-    #     """
-    #     # with one shape, we can just check
-    #     if len(self.shapes) == 1:
-    #         # TODO also return stats here if verbose=True
-    #         return self.shapes[0].can_realize(params, **kwargs)
-    #
-    #     # otherwise we need to solve an opt problem
-    #     J = cp.Variable((4, 4), PSD=True)
-    #     constraints = self.must_realize(J, eps=eps) + [J == params.J]
-    #
-    #     # feasibility problem
-    #     objective = cp.Minimize(0)
-    #     problem = cp.Problem(objective, constraints)
-    #
-    #     t0 = time.time()
-    #     problem.solve(**kwargs)
-    #     t1 = time.time()
-    #
-    #     solved = problem.status == "optimal"
-    #
-    #     if verbose:
-    #         stats = VerificationStats(
-    #             iters=problem.solver_stats.num_iters,
-    #             solve_time=t1 - t0,
-    #         )
-    #         return solved, stats
-    #     return solved
-
     def moment_sdp_constraints(self, param_var, eps=0, d=2):
         """Generate cvxpy constraints for inertial parameters to be realizable
         on this body.
@@ -134,6 +63,7 @@ class RigidBody:
         : list
             List of cvxpy constraints.
         """
+
         def moment_constraints(shape, J, eps=0):
             if isinstance(shape, Ellipsoid):
                 return shape.moment_constraints(J, eps=eps)
@@ -172,7 +102,9 @@ class RigidBody:
             The new body with the same inertial parameters but each shapes
             replaced by its minimum-volume bounding ellipsoid.
         """
-        shapes = [shape.mbe(sphere=sphere, solver=solver) for shape in self.shapes]
+        shapes = [
+            shape.mbe(sphere=sphere, solver=solver) for shape in self.shapes
+        ]
         return RigidBody(shapes=shapes, params=self.params)
 
     def transform(self, rotation=None, translation=None):
@@ -197,7 +129,9 @@ class RigidBody:
             shape.transform(rotation=rotation, translation=translation)
             for shape in self.shapes
         ]
-        params = self.params.transform(rotation=rotation, translation=translation)
+        params = self.params.transform(
+            rotation=rotation, translation=translation
+        )
         return RigidBody(shapes=shapes, params=params)
 
     @staticmethod

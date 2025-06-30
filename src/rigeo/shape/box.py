@@ -235,7 +235,7 @@ class Box(ConvexPolyhedron):
             surface of the box, or ``False`` if not. For multiple points,
             return a boolean array with one value per point.
         """
-        points = np.array(points, copy=False)
+        points = np.asarray(points)
         ndim = points.ndim
         assert (
             ndim <= 2
@@ -351,7 +351,7 @@ class Box(ConvexPolyhedron):
         """
         return ConvexPolyhedron.from_vertices(self.vertices)
 
-    def moment_box_vertex_constraints(self, param_var, eps=0):
+    def moment_custom_vertex_constraints(self, param_var, eps=0):
         """My own custom constraints for boxes."""
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
         T = transform_matrix_inv(

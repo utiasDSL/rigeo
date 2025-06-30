@@ -183,7 +183,7 @@ def test_box_moment_vs_vertex():
         mass, box.moment_sdp_constraints, d=2
     )
     problem_box, D_box = _setup_drip_problem(
-        mass, box.moment_box_vertex_constraints
+        mass, box.moment_custom_vertex_constraints
     )
 
     for _ in range(N):

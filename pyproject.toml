@@ -10,23 +10,17 @@ readme = "README.md"
 requires-python = ">=3.8"
 dependencies = [
   "numpy>=1.23.0",
-  "pybullet>=3.2.1",
-  "matplotlib>=3.5.1",
   "scipy>=1.10.0",
-  "cvxpy[MOSEK]>=1.4.2,<1.5.0", # >=1.5.0 requires Python 3.9
-  "pycddlib>=2.1.6",
-  "xacrodoc>=0.4.0",
-  "pin>=2.6.0",
-  "hpp-fcl>=2.2.0",
-  "spatialmath-python>=1.1.10",
-  "tqdm>=4.66.4",
-  "seaborn>=0.13.2",
-  "pyb-utils>=2.2.1",
+  "cvxpy[MOSEK]>=1.4.2",
+  "pycddlib>=2.1.6,<3.0.0",  # 3.0 has breaking API changes
+  "tqdm>=4.67.1",
 ]
 
 [dependency-groups]
 dev = [
   "pytest>=7.4.0",
+  "spatialmath-python>=1.1.10",
+  "pin>=3.7.0",
 ]
 
 [build-system]

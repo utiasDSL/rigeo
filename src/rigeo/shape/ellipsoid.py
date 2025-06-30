@@ -264,7 +264,7 @@ class Ellipsoid(Shape):
             the ellipsoid, or ``False`` if not. For multiple points, return a
             boolean array with one value per point.
         """
-        points = np.array(points, copy=False)
+        points = np.asarray(points)
         ndim = points.ndim
         assert ndim <= 2, f"points array must have at most 2 dims, but has {ndim}."
         points = np.atleast_2d(points)
@@ -312,7 +312,7 @@ class Ellipsoid(Shape):
         if np.isclose(self.half_extents, 0).any():
             return self.contains(points, tol=tol)
 
-        points = np.array(points, copy=False)
+        points = np.asarray(points)
         ndim = points.ndim
         assert ndim <= 2, f"points array must have at most 2 dims, but has {ndim}."
         points = np.atleast_2d(points)
@@ -615,9 +615,9 @@ def _mbee_con_mat(S, d, Ai, bi, ti):
     dim = S.shape[0]
     ci = bi @ bi - 1
     Z = np.zeros((dim, dim))
-    f = cp.reshape(-1 - ti * ci, (1, 1))
-    e = cp.reshape(d - ti * bi, (dim, 1))
-    d = cp.reshape(d, (dim, 1))
+    f = cp.reshape(-1 - ti * ci, (1, 1), order="C")
+    e = cp.reshape(d - ti * bi, (dim, 1), order="C")
+    d = cp.reshape(d, (dim, 1), order="C")
     # fmt: off
     return cp.bmat([
         [S - ti * Ai, e, Z],

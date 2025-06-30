@@ -261,20 +261,6 @@ class ConvexPolyhedron(Shape):
             return None
         return ConvexPolyhedron(span_form=span_form)
 
-    # def _can_realize_tetrahedron(self, params, tol=0):
-    #     # center of mass must be inside the shape
-    #     if not self.contains(params.com, tol=tol):
-    #         return False
-    #
-    #     c = np.append(params.com, 1)
-    #     V = np.vstack((self.vertices.T, np.ones(4)))
-    #     ms = np.linalg.solve(V, params.mass * c)
-    #
-    #     Vs = np.array([np.outer(v, v) for v in self.vertices])
-    #     H_max = sum([m * V for m, V in zip(ms, Vs)])
-    #
-    #     return np.min(np.linalg.eigvals(H_max - params.H)) >= -tol
-
     def moment_sdp_feasibility_problem(self, param_var, eps=0, d=2):
         objective = cp.Minimize([0])
         constraints = self.moment_sdp_constraints(param_var, eps=eps, d=d)

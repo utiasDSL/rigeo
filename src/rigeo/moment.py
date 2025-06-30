@@ -113,7 +113,7 @@ class Polynomial:
 
     def evaluate(self, x):
         """Evaluate the polynomial at point x."""
-        x = np.array(x, copy=False)
+        x = np.asarray(x)
         return np.sum(
             [
                 coeff * np.prod(x**idx.value)

@@ -197,29 +197,30 @@ class MultiBody:
         indices = [self._resolve_joint_index(joint) for joint in joints]
         return [self.bodies[idx] for idx in indices]
 
-    def is_realizable(self, joints=None, solver=None):
-        """Check if (a subset of) the multibody is density realizable.
-
-        Parameters
-        ----------
-        joints : Iterable[str or int] or None
-            If not ``None``, only check density realizability on the bodies
-            corresponding to these joints.
-            index.
-        solver : str or None
-            If checking realizability requires solving an optimization problem,
-            one can optionally be specified.
-
-        Returns
-        -------
-        : bool
-            ``True`` if the given joints are realizable, ``False`` otherwise.
-        """
-        if joints is not None:
-            bodies = self.get_bodies(joints)
-        else:
-            bodies = self.bodies
-        return np.all([body.is_realizable(solver=solver) for body in bodies])
+    # TODO this is no longer valid
+    # def is_realizable(self, joints=None, solver=None):
+    #     """Check if (a subset of) the multibody is density realizable.
+    #
+    #     Parameters
+    #     ----------
+    #     joints : Iterable[str or int] or None
+    #         If not ``None``, only check density realizability on the bodies
+    #         corresponding to these joints.
+    #         index.
+    #     solver : str or None
+    #         If checking realizability requires solving an optimization problem,
+    #         one can optionally be specified.
+    #
+    #     Returns
+    #     -------
+    #     : bool
+    #         ``True`` if the given joints are realizable, ``False`` otherwise.
+    #     """
+    #     if joints is not None:
+    #         bodies = self.get_bodies(joints)
+    #     else:
+    #         bodies = self.bodies
+    #     return np.all([body.is_realizable(solver=solver) for body in bodies])
 
     def compute_forward_kinematics(self, q, v=None, a=None):
         """Compute forward kinematics.

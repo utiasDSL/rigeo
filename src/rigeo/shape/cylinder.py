@@ -156,17 +156,13 @@ class Cylinder(Shape):
         moment = MomentMatrix(n=3, d=d)
         M = cp.Variable(moment.shape, PSD=True)
 
-        # import IPython
-        # IPython.embed()
-        # raise ValueError("stop")
-
         return (
             moment.moment_constraints(M)
             + moment.localizing_constraints(M, polys=self._poly0s)
             + [m == M[0, 0], h == M[0, 1:4], H == M[1:4, 1:4]]
         )
 
-    def moment_cylinder_vertex_constraints(self, param_var, eps=0):
+    def moment_custom_vertex_constraints(self, param_var, eps=0):
         J, psd_constraints = pim_must_equal_param_var(param_var, eps)
         T = transform_matrix_inv(
             rotation=self.rotation, translation=self.center
@@ -197,18 +193,6 @@ class Cylinder(Shape):
                 m == J_sum[3, 3],
             ]
         )
-
-        # + [
-        #     J_sum == cp.sum(Js),
-        #     J[3, 3] == J_sum[3, 3],
-        #     J[:3, 3] == J_sum[:3, 3],
-        #     J[:3, :3] << J_sum[:3, :3],
-        # ]
-        # + [
-        #     c
-        #     for J, disk in zip(Js, self.disks)
-        #     for c in disk.moment_constraints(J, eps=0)
-        # ]
 
     def transform(self, rotation=None, translation=None):
         rotation, translation = clean_transform(

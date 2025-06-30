@@ -72,7 +72,7 @@ def test_cylinder_moment_vertex_constraints():
     objective = cp.Maximize(J[0, 0])
 
     # need a mass constraint to bound the problem
-    constraints = cylinder.moment_cylinder_vertex_constraints(J) + [m <= 1]
+    constraints = cylinder.moment_custom_vertex_constraints(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)
     assert problem.status == cp.OPTIMAL
@@ -91,7 +91,7 @@ def test_cylinder_moment_vertex_constraints():
     m = J[3, 3]
 
     objective = cp.Maximize(J[0, 0])
-    constraints = cylinder.moment_cylinder_vertex_constraints(J) + [m <= 1]
+    constraints = cylinder.moment_custom_vertex_constraints(J) + [m <= 1]
     problem = cp.Problem(objective, constraints)
     problem.solve(solver=cp.MOSEK)
     assert problem.status == cp.OPTIMAL

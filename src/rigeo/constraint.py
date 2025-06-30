@@ -5,9 +5,9 @@ import cvxpy as cp
 def _shape_schur_var(X):
     """Shape a variable into a 2-ndim expression."""
     if np.isscalar(X) or (isinstance(X, cp.Expression) and X.size == 1):
-        X = cp.reshape(X, (1, 1))
+        X = cp.reshape(X, (1, 1), order="C")
     elif X.ndim == 1:
-        X = cp.reshape(X, (X.shape[0], 1))
+        X = cp.reshape(X, (X.shape[0], 1), order="C")
     return X
 
 

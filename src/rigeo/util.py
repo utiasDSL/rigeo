@@ -229,3 +229,20 @@ def box_vertices(half_extents):
     dim = len(half_extents)
     combos = np.array([c for c in itertools.product([1, -1], repeat=dim)])
     return combos * half_extents
+
+
+def contact_jacobian(point):
+    """Compute the contact Jacobian for a point.
+
+    Parameters
+    ----------
+    point : np.ndarray, shape (3,)
+        The contact point.
+
+    Returns
+    -------
+    : np.ndarray, shape (6, 3)
+        The contact Jacobian matrix, which the contact force to the applied
+        contact wrench.
+    """
+    return np.vstack((skew3(point), np.eye(3)))
