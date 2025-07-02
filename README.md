@@ -58,6 +58,19 @@ cd rigeo
 python -m pip install .
 ```
 
+## Scripts
+
+You can find a variety of scripts in the `scripts` directory:
+
+* `examples`: numerical examples of computing inertial parameters for
+  particular bodies using random sampling (see [this blog
+  post](https://adamheins.com/blog/cuboid-inertia));
+* `experiments`: numerical experiments comparing density realizability
+  constraints based on moment relaxations to custom constraints for boxes and
+  cylinders (the custom ones yield the same results but result in much faster
+  semidefinite programs);
+* `theory`: symbolic derivations of some inertial parameter results.
+
 ## Development
 
 Tests are run using pytest:
