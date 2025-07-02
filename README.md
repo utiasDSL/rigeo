@@ -1,6 +1,6 @@
-# rigeo: rigid body geometry
+# rigeo: rigid body geometry and inertial parameters
 
-Rigeo is a prototyping library for rigid body geometry in Python: it combines
+rigeo is a prototyping library for working with rigid bodies in Python: it combines
 three-dimensional geometry with the inertial properties of rigid bodies, with
 applications to robotic manipulation.
 
