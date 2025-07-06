@@ -62,7 +62,7 @@ python -m pip install .
 
 You can find a variety of scripts in the `scripts` directory:
 
-* `examples`: numerical examples of computing inertial parameters for
+* `examples`: numerical examples of approximating inertial parameters for
   particular bodies using random sampling (see [this blog
   post](https://adamheins.com/blog/cuboid-inertia));
 * `experiments`: numerical experiments comparing density realizability
