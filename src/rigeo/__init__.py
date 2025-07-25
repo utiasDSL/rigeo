@@ -14,3 +14,4 @@ from .rigidbody import RigidBody
 from .util import *
 from .spatial import SpatialVector, SV
 from .moment import MomentIndex, Polynomial, MomentMatrix
+from .test_util import allclose_unordered
