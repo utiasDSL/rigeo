@@ -38,6 +38,11 @@ installed by default and is used as the solver for the tests. Academic licenses
 for MOSEK can be obtained for free. If this is not an option for you, Clarabel
 is a reasonable open-source alternative.
 
+Install system dependencies for cddlib:
+```
+sudo apt install libcdd-dev libgmp-dev
+```
+
 From pip:
 ```
 pip install rigeo
