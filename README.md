@@ -43,24 +43,24 @@ Install system dependencies for cddlib:
 sudo apt install libcdd-dev libgmp-dev
 ```
 
-From pip:
+Then install the library using pip:
 ```
 pip install rigeo
 ```
 
-From source (using [uv](https://docs.astral.sh/uv/)):
+or from source (using pip):
+```
+git clone https://github.com/utiasDSL/rigeo
+cd rigeo
+python -m pip install .
+```
+
+or from source using [uv](https://docs.astral.sh/uv/):
 ```
 git clone https://github.com/utiasDSL/rigeo
 cd rigeo
 uv venv
 uv sync
-```
-
-From source (using pip):
-```
-git clone https://github.com/utiasDSL/rigeo
-cd rigeo
-python -m pip install .
 ```
 
 ## Scripts
